@@ -1,8 +1,11 @@
 const admin = require("firebase-admin");
-const serviceAccount = JSON.parse(process.env.FIREBASE_CONFIG_JSON); // سيقرأ البيانات من إعدادات موقع Render
+
+// نقرأ البيانات من المتغير السري الذي وضعناه في Render
+const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
 
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount)
 });
 
-module.exports = admin.firestore();
+const db = admin.firestore();
+module.exports = db;
