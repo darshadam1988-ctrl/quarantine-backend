@@ -1,23 +1,17 @@
 const admin = require("firebase-admin");
 
-// نتحقق من وجود المتغيرات قبل الاستخدام
-if (!process.env.FIREBASE_PROJECT_ID || !process.env.FIREBASE_PRIVATE_KEY) {
-  console.error("ERROR: Missing Firebase environment variables!");
-  process.exit(1); // إيقاف التشغيل إذا كانت البيانات مفقودة
-}
-
 admin.initializeApp({
   credential: admin.credential.cert({
-    project_id: process.env.FIREBASE_PROJECT_ID(/\\n/g, '\n'),
+    project_id: process.env.FIREBASE_PROJECT_ID,
     private_key_id: process.env.FIREBASE_PRIVATE_KEY_ID,
-    private_key: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+    // السطر المهم هنا هو التالي، تأكد أنه يخص الـ private_key فقط
+    private_key: process.env.FIREBASE_PRIVATE_KEY ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n') : '',
     client_email: process.env.FIREBASE_CLIENT_EMAIL,
     client_id: process.env.FIREBASE_CLIENT_ID,
     auth_uri: process.env.FIREBASE_AUTH_URI,
     token_uri: process.env.FIREBASE_TOKEN_URI,
     auth_provider_x509_cert_url: process.env.FIREBASE_AUTH_PROVIDER_X509_CERT_URL,
-    client_x509_cert_url: process.env.FIREBASE_CLIENT_X509_CERT_URL,
-    universe_domain: "googleapis.com"
+    client_x509_cert_url: process.env.FIREBASE_CLIENT_X509_CERT_URL
   })
 });
 
