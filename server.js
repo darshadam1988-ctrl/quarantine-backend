@@ -286,41 +286,286 @@ app.post("/update-admin-password", async (req, res) => {
 // 📊 [مطور بالكامل] جلب الإحصائيات المجمعة للداشبورد والترتيب والتأكد من مسميات الحقول
 // =======================================================
 // استبدل جزء التجميع في server.js بهذا الكود الدقيق:
-app.get("/get-dashboard-stats", async (req, res) => {
-    try {
-        const { from, to } = req.query;
-        // استعلام من Firebase بناءً على التاريخ
-        const snapshot = await db.collection("daily_reports")
-            .where("date", ">=", from)
-            .where("date", "<=", to)
-            .get();
+// =======================================================
+// 📊 جلب إحصائيات الداشبورد
+// =======================================================
 
-        let stats = {
+app.get("/get-dashboard-stats", async (req, res) => {
+
+    try {
+
+        const { from, to } = req.query;
+
+        if (!from || !to) {
+
+            return res.status(400).json({
+
+                success: false,
+                message: "from & to required"
+            });
+        }
+
+        const startOfDay =
+            new Date(`${from}T00:00:00.000Z`);
+
+        const endOfDay =
+            new Date(`${to}T23:59:59.999Z`);
+
+        // ======================================
+        // قراءة التقارير الصحيحة
+        // ======================================
+
+        const snapshot =
+            await db
+                .collection("reports")
+                .where(
+                    "createdAt",
+                    ">=",
+                    startOfDay
+                )
+                .where(
+                    "createdAt",
+                    "<=",
+                    endOfDay
+                )
+                .get();
+
+        // ======================================
+        // موديل الإحصائيات
+        // ======================================
+
+        const stats = {
+
             totalVisitors: 0,
+
+            totalCost: 0,
+
             vaccineUsage: {
-                yellow: 0, cholera: 0, solk: 0, pasteur: 0, 
-                pfizer: 0, dual: 0, flu: 0, hep: 0
-            }
+
+                yellow: 0,
+                cholera: 0,
+                solk: 0,
+                pasteur: 0,
+                pfizer: 0,
+                dual: 0,
+                flu: 0,
+                hep: 0
+            },
+
+            officePerformance: {}
         };
 
-        snapshot.forEach(doc => {
-            const r = doc.data();
-            stats.totalVisitors += Number(r.totalVisitors || 0);
-            
-            // التجميع الدقيق لكل نوع
-            stats.vaccineUsage.yellow += Number(r.yellowUsed || 0);
-            stats.vaccineUsage.cholera += Number(r.choleraUsed || 0);
-            stats.vaccineUsage.solk += Number(r.solkUsed || 0);
-            stats.vaccineUsage.pasteur += (Number(r.pasteurHajj || 0) + Number(r.pasteurForeign || 0) + Number(r.pasteurOmrah || 0));
-            stats.vaccineUsage.pfizer += (Number(r.pfizerHajj || 0) + Number(r.pfizerForeign || 0) + Number(r.pfizerOmrah || 0));
-            stats.vaccineUsage.dual += Number(r.dualUsed || 0);
-            stats.vaccineUsage.flu += Number(r.fluUsed || 0);
-            stats.vaccineUsage.hep += Number(r.hepUsed || 0);
+        // ======================================
+        // تجميع البيانات
+        // ======================================
+
+        snapshot.forEach((doc) => {
+
+            const r =
+                doc.data();
+
+            const office =
+                r.officeName ||
+                r.officeCode ||
+                "غير معروف";
+
+            // ==================================
+            // إنشاء المكتب
+            // ==================================
+
+            if (
+                !stats.officePerformance[office]
+            ) {
+
+                stats.officePerformance[office] = {
+
+                    visitors: 0,
+                    cost: 0
+                };
+            }
+
+            // ==================================
+            // المترددين
+            // ==================================
+
+            const visitors =
+                Number(r.visitors || 0);
+
+            stats.totalVisitors +=
+                visitors;
+
+            stats.officePerformance[office]
+                .visitors += visitors;
+
+            // ==================================
+            // التكلفة
+            // ==================================
+
+            const totalCost = Number(
+
+                r.totalCost ??
+                r.cost ??
+                r.total ??
+                r.price ??
+                r.amount ??
+                r.money ??
+                r.fees ??
+                0
+            );
+
+            stats.totalCost +=
+                totalCost;
+
+            stats.officePerformance[office]
+                .cost += totalCost;
+
+            // ==================================
+            // الحمى الصفراء
+            // ==================================
+
+            stats.vaccineUsage.yellow +=
+
+                Number(
+                    r.yellowEgyptians || 0
+                ) +
+
+                Number(
+                    r.yellowForeigners || 0
+                );
+
+            // ==================================
+            // الكوليرا
+            // ==================================
+
+            stats.vaccineUsage.cholera +=
+
+                Number(
+                    r.choleraDose1 || 0
+                ) +
+
+                Number(
+                    r.choleraDose2 || 0
+                );
+
+            // ==================================
+            // سولك
+            // ==================================
+
+            stats.vaccineUsage.solk +=
+
+                Number(
+                    r.solkUsed || 0
+                );
+
+            // ==================================
+            // باستير
+            // ==================================
+
+            stats.vaccineUsage.pasteur +=
+
+                Number(
+                    r.pasteurHajj || 0
+                ) +
+
+                Number(
+                    r.pasteurForeignHajj || 0
+                ) +
+
+                Number(
+                    r.pasteurOmrah || 0
+                ) +
+
+                Number(
+                    r.pasteurTravelers || 0
+                );
+
+            // ==================================
+            // فايزر
+            // ==================================
+
+            stats.vaccineUsage.pfizer +=
+
+                Number(
+                    r.pfizerHajj || 0
+                ) +
+
+                Number(
+                    r.pfizerForeignHajj || 0
+                ) +
+
+                Number(
+                    r.pfizerOmrah || 0
+                ) +
+
+                Number(
+                    r.pfizerTravelers || 0
+                );
+
+            // ==================================
+            // الثنائي
+            // ==================================
+
+            stats.vaccineUsage.dual +=
+
+                Number(
+                    r.dualUsed || 0
+                );
+
+            // ==================================
+            // الإنفلونزا
+            // ==================================
+
+            stats.vaccineUsage.flu +=
+
+                Number(
+                    r.fluHajj || 0
+                ) +
+
+                Number(
+                    r.fluTravelers || 0
+                ) +
+
+                Number(
+                    r.fluCitizens || 0
+                );
+
+            // ==================================
+            // الكبدي
+            // ==================================
+
+            stats.vaccineUsage.hep +=
+
+                Number(
+                    r.hepEgyptians || 0
+                ) +
+
+                Number(
+                    r.hepForeigners || 0
+                );
         });
 
-        res.json({ success: true, stats });
+        // ======================================
+        // إرسال النتيجة
+        // ======================================
+
+        res.json({
+
+            success: true,
+            stats
+        });
+
     } catch (err) {
-        res.status(500).json({ success: false, message: err.message });
+
+        console.error(
+            "Dashboard Stats Error:",
+            err
+        );
+
+        res.status(500).json({
+
+            success: false,
+            message: err.message
+        });
     }
 });
 
