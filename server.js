@@ -285,70 +285,41 @@ app.post("/update-admin-password", async (req, res) => {
 // =======================================================
 // 📊 [مطور بالكامل] جلب الإحصائيات المجمعة للداشبورد والترتيب والتأكد من مسميات الحقول
 // =======================================================
+// استبدل جزء التجميع في server.js بهذا الكود الدقيق:
 app.get("/get-dashboard-stats", async (req, res) => {
     try {
         const { from, to } = req.query;
-        const start = new Date(`${from}T00:00:00.000Z`);
-        const end = new Date(`${to}T23:59:59.999Z`);
-
-        const snapshot = await db.collection("reports")
-            .where("createdAt", ">=", start)
-            .where("createdAt", "<=", end)
+        // استعلام من Firebase بناءً على التاريخ
+        const snapshot = await db.collection("daily_reports")
+            .where("date", ">=", from)
+            .where("date", "<=", to)
             .get();
 
-        const reports = [];
-        snapshot.forEach(doc => reports.push(doc.data()));
-
-        const stats = {
+        let stats = {
             totalVisitors: 0,
-            totalCost: 0,
-            totalLostCertificates: 0, 
-            totalCovidStatements: 0,   
-            vaccineUsage: { 
-                yellow: 0, cholera: 0, solk: 0, pasteur: 0, pfizer: 0, dual: 0, flu: 0, hep: 0
-            },
-            officePerformance: [] // مصفوفة لتسهيل عملية الترتيب والعرض بالفرونت
+            vaccineUsage: {
+                yellow: 0, cholera: 0, solk: 0, pasteur: 0, 
+                pfizer: 0, dual: 0, flu: 0, hep: 0
+            }
         };
 
-        const officeMap = {};
-
-        reports.forEach(r => {
-            const visitors = Number(r.visitors || 0);
-            const cost = Number(r.totalCost?.toString().replace(/[^0-9.-]+/g,"") || 0);
-            const lostCerts = Number(r.lostCertificates || 0);
-            const covidStats = Number(r.covidStatements || 0);
-            const office = r.officeName || "مكتب غير معروف";
-
-            stats.totalVisitors += visitors;
-            stats.totalCost += cost;
-            stats.totalLostCertificates += lostCerts;
-            stats.totalCovidStatements += covidStats;
-
-            if (!officeMap[office]) {
-                officeMap[office] = { officeName: office, visitors: 0, cost: 0, lostCertificates: 0, covidStatements: 0 };
-            }
-            officeMap[office].visitors += visitors;
-            officeMap[office].cost += cost;
-            officeMap[office].lostCertificates += lostCerts;
-            officeMap[office].covidStatements += covidStats;
-
-            // ✨ تم تعديل المسميات هنا لتطابق مخرجات الـ Frontend بشكل كامل وصحيح 100%
-            stats.vaccineUsage.yellow += (Number(r.yellowEgyptians || 0) + Number(r.yellowForeigners || 0));
-            stats.vaccineUsage.cholera += (Number(r.choleraDose1 || 0) + Number(r.choleraDose2 || 0));
+        snapshot.forEach(doc => {
+            const r = doc.data();
+            stats.totalVisitors += Number(r.totalVisitors || 0);
+            
+            // التجميع الدقيق لكل نوع
+            stats.vaccineUsage.yellow += Number(r.yellowUsed || 0);
+            stats.vaccineUsage.cholera += Number(r.choleraUsed || 0);
             stats.vaccineUsage.solk += Number(r.solkUsed || 0);
-            stats.vaccineUsage.pasteur += (Number(r.pasteurHajj || 0) + Number(r.pasteurForeignHajj || 0) + Number(r.pasteurOmrah || 0) + Number(r.pasteurTravelers || 0));
-            stats.vaccineUsage.pfizer += (Number(r.pfizerHajj || 0) + Number(r.pfizerForeignHajj || 0) + Number(r.pfizerOmrah || 0) + Number(r.pfizerTravelers || 0));
+            stats.vaccineUsage.pasteur += (Number(r.pasteurHajj || 0) + Number(r.pasteurForeign || 0) + Number(r.pasteurOmrah || 0));
+            stats.vaccineUsage.pfizer += (Number(r.pfizerHajj || 0) + Number(r.pfizerForeign || 0) + Number(r.pfizerOmrah || 0));
             stats.vaccineUsage.dual += Number(r.dualUsed || 0);
-            stats.vaccineUsage.flu += (Number(r.fluHajj || 0) + Number(r.fluTravelers || 0) + Number(r.fluCitizens || 0));
-            stats.vaccineUsage.hep += (Number(r.hepEgyptians || 0) + Number(r.hepForeigners || 0));
+            stats.vaccineUsage.flu += Number(r.fluUsed || 0);
+            stats.vaccineUsage.hep += Number(r.hepUsed || 0);
         });
-
-        // تحويل خريطة المكاتب إلى مصفوفة وترتيبها تنازلياً حسب الأعلى إيراداً لخدمة شاشة الـ Admin التحليلية
-        stats.officePerformance = Object.values(officeMap).sort((a, b) => b.cost - a.cost);
 
         res.json({ success: true, stats });
     } catch (err) {
-        console.error("Dashboard Stats Error:", err);
         res.status(500).json({ success: false, message: err.message });
     }
 });
@@ -357,6 +328,7 @@ app.get("/get-dashboard-stats", async (req, res) => {
 // 🚀 تشغيل الخادم والإنصات للمنافذ
 // =======================================================
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
+// أضف '0.0.0.0' هنا:
+app.listen(PORT, '0.0.0.0', () => {
     console.log(`⚡ Cairo Quarantine Backend is running securely on port ${PORT}`);
 });
