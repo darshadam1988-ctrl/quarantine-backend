@@ -1,15 +1,21 @@
 const admin = require("firebase-admin");
 
-// تنظيف المفتاح من أي تداخلات في Railway
-const privateKey = process.env.FIREBASE_PRIVATE_KEY 
-  ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n').replace(/"/g, '') 
-  : '';
+// نستخدم Buffer لفك تشفير المفتاح إذا كان مشفراً بـ Base64
+// أو نتركه كما هو إذا كان نصاً عادياً، الكود سيكتشف ذلك
+const getPrivateKey = () => {
+  const pk = process.env.FIREBASE_PRIVATE_KEY || '';
+  // إذا كان المفتاح يبدأ بـ BEGIN، فهو نصي، وإلا فهو مشفر بـ Base64
+  if (pk.includes('BEGIN')) {
+    return pk.replace(/\\n/g, '\n');
+  }
+  return Buffer.from(pk, 'base64').toString('ascii');
+};
 
 admin.initializeApp({
   credential: admin.credential.cert({
     project_id: process.env.FIREBASE_PROJECT_ID,
     private_key_id: process.env.FIREBASE_PRIVATE_KEY_ID,
-    private_key: privateKey, // المفتاح المنظف
+    private_key: getPrivateKey(), 
     client_email: process.env.FIREBASE_CLIENT_EMAIL,
     client_id: process.env.FIREBASE_CLIENT_ID,
     auth_uri: process.env.FIREBASE_AUTH_URI,
