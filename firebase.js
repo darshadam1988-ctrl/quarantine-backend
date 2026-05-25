@@ -1,27 +1,28 @@
 const admin = require("firebase-admin");
 
-// نستخدم Buffer لفك تشفير المفتاح إذا كان مشفراً بـ Base64
-// أو نتركه كما هو إذا كان نصاً عادياً، الكود سيكتشف ذلك
-const getPrivateKey = () => {
-  const pk = process.env.FIREBASE_PRIVATE_KEY || '';
-  // إذا كان المفتاح يبدأ بـ BEGIN، فهو نصي، وإلا فهو مشفر بـ Base64
-  if (pk.includes('BEGIN')) {
-    return pk.replace(/\\n/g, '\n');
+// دالة لجلب المتغيرات والتأكد من وجودها
+const getEnv = (key) => {
+  if (!process.env[key]) {
+    console.error(`Missing environment variable: ${key}`);
   }
-  return Buffer.from(pk, 'base64').toString('ascii');
+  return process.env[key] || "";
 };
+
+const privateKey = getEnv("FIREBASE_PRIVATE_KEY")
+  ? getEnv("FIREBASE_PRIVATE_KEY").replace(/\\n/g, '\n').replace(/"/g, '')
+  : '';
 
 admin.initializeApp({
   credential: admin.credential.cert({
-    project_id: process.env.FIREBASE_PROJECT_ID,
-    private_key_id: process.env.FIREBASE_PRIVATE_KEY_ID,
-    private_key: getPrivateKey(), 
-    client_email: process.env.FIREBASE_CLIENT_EMAIL,
-    client_id: process.env.FIREBASE_CLIENT_ID,
-    auth_uri: process.env.FIREBASE_AUTH_URI,
-    token_uri: process.env.FIREBASE_TOKEN_URI,
-    auth_provider_x509_cert_url: process.env.FIREBASE_AUTH_PROVIDER_X509_CERT_URL,
-    client_x509_cert_url: process.env.FIREBASE_CLIENT_X509_CERT_URL
+    project_id: getEnv("FIREBASE_PROJECT_ID"),
+    private_key_id: getEnv("FIREBASE_PRIVATE_KEY_ID"),
+    private_key: privateKey,
+    client_email: getEnv("FIREBASE_CLIENT_EMAIL"),
+    client_id: getEnv("FIREBASE_CLIENT_ID"),
+    auth_uri: getEnv("FIREBASE_AUTH_URI"),
+    token_uri: getEnv("FIREBASE_TOKEN_URI"),
+    auth_provider_x509_cert_url: getEnv("FIREBASE_AUTH_PROVIDER_X509_CERT_URL"),
+    client_x509_cert_url: getEnv("FIREBASE_CLIENT_X509_CERT_URL")
   })
 });
 
