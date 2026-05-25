@@ -398,20 +398,32 @@ app.get("/get-dashboard-stats", async (req, res) => {
                 .visitors += visitors;
 
             // ==================================
-            // التكلفة
-            // ==================================
+// تنظيف التكلفة
+// ==================================
 
-            const totalCost = Number(
+const rawCost =
 
-                r.totalCost ??
-                r.cost ??
-                r.total ??
-                r.price ??
-                r.amount ??
-                r.money ??
-                r.fees ??
-                0
-            );
+    r.totalCost ??
+    r.cost ??
+    r.total ??
+    r.price ??
+    r.amount ??
+    r.money ??
+    r.fees ??
+    0;
+
+// تحويل ذكي للنصوص
+const totalCost = parseFloat(
+
+    String(rawCost)
+
+        .replace(/,/g, "")
+
+        .replace(/[^\d.-]/g, "")
+
+        .trim()
+
+) || 0;
 
             stats.totalCost +=
                 totalCost;
