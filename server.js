@@ -11,11 +11,15 @@ app.use(express.json());
 // 🔐 منظومة تسجيل الدخول (LOGIN SYSTEM)
 // =======================================================
 app.post("/login", async (req, res) => {
+
     try {
+
         const { username, password } = req.body;
 
         if (!username || !password) {
+
             return res.status(400).json({
+
                 success: false,
                 message: "برجاء إدخال اسم المستخدم وكلمة المرور"
             });
@@ -28,76 +32,148 @@ app.post("/login", async (req, res) => {
             .get();
 
         if (snapshot.empty) {
+
             return res.json({
+
                 success: false,
                 message: "بيانات الدخول غير صحيحة"
             });
         }
 
-        const userData = snapshot.docs[0].data();
-        console.log("LOGIN SUCCESS:", userData);
+        const userData =
+            snapshot.docs[0].data();
+
+        console.log(
+            "LOGIN SUCCESS:",
+            userData
+        );
 
         res.json({
+
             success: true,
             user: userData
         });
 
     } catch (err) {
-        console.error("Login Error:", err);
-        res.status(500).json({ success: false, message: "حدث خطأ في الخادم" });
+
+        console.error(
+            "Login Error:",
+            err
+        );
+
+        res.status(500).json({
+
+            success: false,
+            message: "حدث خطأ في الخادم"
+        });
     }
 });
 
 // =======================================================
-// 🟢 جلب الأرصدة الحالية لمكتب معين عبر الـ Params
+// 🟢 جلب الأرصدة الحالية لمكتب معين
 // =======================================================
 app.get("/get-balances/:officeCode", async (req, res) => {
+
     try {
-        const { officeCode } = req.params;
+
+        const { officeCode } =
+            req.params;
 
         if (!officeCode) {
-            return res.status(400).json({ success: false, message: "كود المكتب مطلوب" });
+
+            return res.status(400).json({
+
+                success: false,
+                message: "كود المكتب مطلوب"
+            });
         }
 
-        const doc = await db.collection("balances").doc(officeCode).get();
+        const doc = await db
+            .collection("balances")
+            .doc(officeCode)
+            .get();
 
         if (!doc.exists) {
-            return res.json({ success: false, message: "لا توجد أرصدة مسجلة لهذا المكتب" });
+
+            return res.json({
+
+                success: false,
+                message: "لا توجد أرصدة مسجلة لهذا المكتب"
+            });
         }
 
         res.json({
+
             success: true,
             balances: doc.data()
         });
 
     } catch (err) {
-        console.error("Get Balances Error:", err);
-        res.status(500).json({ success: false });
+
+        console.error(
+            "Get Balances Error:",
+            err
+        );
+
+        res.status(500).json({
+
+            success: false
+        });
     }
 });
 
 // =======================================================
-// 💾 حفظ التقرير اليومي الصادر من المكاتب
+// 💾 حفظ التقرير اليومي
 // =======================================================
 app.post("/save-report", async (req, res) => {
+
     try {
+
         const report = {
+
             ...req.body,
-            lostCertificates: Number(req.body.lostCertificates) || 0,
-            covidStatements: Number(req.body.covidStatements) || 0,
-            visitors: Number(req.body.visitors) || 0,
-            createdAt: {
-              type: Date,
-               default: Date.now
-            }
+
+            // ==================================
+            // تحويلات رقمية
+            // ==================================
+
+            lostCertificates:
+                Number(req.body.lostCertificates) || 0,
+
+            covidStatements:
+                Number(req.body.covidStatements) || 0,
+
+            visitors:
+                Number(req.body.visitors) || 0,
+
+            // ==================================
+            // تاريخ حقيقي صالح للفلترة
+            // ==================================
+
+            createdAt:
+                new Date()
         };
 
-        await db.collection("reports").add(report);
-        res.json({ success: true });
+        await db
+            .collection("reports")
+            .add(report);
+
+        res.json({
+
+            success: true
+        });
 
     } catch (err) {
-        console.error("Save Report Error:", err);
-        res.status(500).json({ success: false });
+
+        console.error(
+            "Save Report Error:",
+            err
+        );
+
+        res.status(500).json({
+
+            success: false
+        });
     }
 });
 
@@ -105,79 +181,147 @@ app.post("/save-report", async (req, res) => {
 // ⚙️ حفظ وتحديث الأرصدة الحية
 // =======================================================
 app.post("/save-balances", async (req, res) => {
-    try {
-        const { officeCode, balances } = req.body;
 
-        if (!officeCode || !balances) {
-            return res.status(400).json({ success: false, message: "بيانات ناقصة" });
+    try {
+
+        const {
+            officeCode,
+            balances
+        } = req.body;
+
+        if (
+            !officeCode ||
+            !balances
+        ) {
+
+            return res.status(400).json({
+
+                success: false,
+                message: "بيانات ناقصة"
+            });
         }
 
-        await db.collection("balances")
+        await db
+            .collection("balances")
             .doc(officeCode)
-            .set(balances);
+            .set({
 
-        res.json({ success: true });
+                ...balances,
+
+                updatedAt:
+                    new Date()
+            });
+
+        res.json({
+
+            success: true
+        });
 
     } catch (err) {
-        console.error("Save Balances Error:", err);
-        res.status(500).json({ success: false });
+
+        console.error(
+            "Save Balances Error:",
+            err
+        );
+
+        res.status(500).json({
+
+            success: false
+        });
     }
 });
 
 // =======================================================
-// 📋 جلب كافة التقارير المجمعة والأرصدة لشاشة التقارير المتقدمة
+// 📋 جلب التقارير المتقدمة
 // =======================================================
 app.get("/get-all-reports", async (req, res) => {
 
     try {
 
-        const { from, to } = req.query;
+        const {
+            from,
+            to
+        } = req.query;
 
-        // =====================================
+        // ==================================
         // التحقق من التواريخ
-        // =====================================
+        // ==================================
 
         if (!from || !to) {
 
-            return res.json({
+            return res.status(400).json({
+
                 success: false,
                 message: "يجب إرسال from و to"
             });
         }
 
-        // =====================================
+        // ==================================
         // بداية اليوم
-        // =====================================
+        // ==================================
 
-        const fromDate = new Date(from);
+        const fromDate =
+            new Date(from);
 
-        fromDate.setHours(0, 0, 0, 0);
+        fromDate.setHours(
+            0,
+            0,
+            0,
+            0
+        );
 
-        // =====================================
+        // ==================================
         // نهاية اليوم
-        // =====================================
+        // ==================================
 
-        const toDate = new Date(to);
+        const toDate =
+            new Date(to);
 
-        toDate.setHours(23, 59, 59, 999);
+        toDate.setHours(
+            23,
+            59,
+            59,
+            999
+        );
 
-        // =====================================
-        // جلب البيانات
-        // =====================================
+        // ==================================
+        // قراءة التقارير من فايربيز
+        // ==================================
 
-        const reports = await Report.find({
+        const snapshot =
+            await db
+                .collection("reports")
+                .where(
+                    "createdAt",
+                    ">=",
+                    fromDate
+                )
+                .where(
+                    "createdAt",
+                    "<=",
+                    toDate
+                )
+                .orderBy(
+                    "createdAt",
+                    "asc"
+                )
+                .get();
 
-            createdAt: {
+        const reports = [];
 
-                $gte: fromDate,
+        snapshot.forEach((doc) => {
 
-                $lte: toDate
-            }
+            reports.push({
 
-        }).sort({
+                id: doc.id,
 
-            createdAt: 1
+                ...doc.data()
+            });
         });
+
+        // ==================================
+        // إرسال النتيجة
+        // ==================================
 
         return res.json({
 
@@ -197,162 +341,384 @@ app.get("/get-all-reports", async (req, res) => {
 
             success: false,
 
-            message: "حدث خطأ أثناء تحميل التقارير"
+            message:
+                "حدث خطأ أثناء تحميل التقارير"
         });
     }
 });
 
 // =======================================================
-// 🏢 جلب قائمة جميع المكاتب لـ شاشة الإدارة
+// 🏢 جلب جميع المكاتب
 // =======================================================
 app.get("/get-all-offices", async (req, res) => {
+
     try {
-        const snapshot = await db.collection("users")
-            .where("role", "==", "office")
-            .get();
+
+        const snapshot =
+            await db
+                .collection("users")
+                .where(
+                    "role",
+                    "==",
+                    "office"
+                )
+                .get();
 
         const offices = [];
-        snapshot.forEach(doc => {
-            offices.push({ id: doc.id, ...doc.data() });
+
+        snapshot.forEach((doc) => {
+
+            offices.push({
+
+                id: doc.id,
+
+                ...doc.data()
+            });
         });
 
-        res.json({ success: true, offices });
+        res.json({
+
+            success: true,
+
+            offices
+        });
+
     } catch (err) {
-        console.error("Error fetching offices:", err);
-        res.status(500).json({ success: false, message: "حدث خطأ في جلب المكاتب" });
+
+        console.error(
+            "Error fetching offices:",
+            err
+        );
+
+        res.status(500).json({
+
+            success: false,
+
+            message:
+                "حدث خطأ في جلب المكاتب"
+        });
     }
 });
 
 // =======================================================
-// 🔄 تحديث بيانات حساب المكتب (اسم المستخدم أو كلمة السر)
+// 🔄 تحديث بيانات المكتب
 // =======================================================
 app.post("/update-office-account", async (req, res) => {
-    try {
-        const { officeId, username, password } = req.body;
 
-        if (!officeId || !username || !password) {
-            return res.status(400).json({ success: false, message: "جميع الحقول مطلوبة" });
+    try {
+
+        const {
+            officeId,
+            username,
+            password
+        } = req.body;
+
+        if (
+            !officeId ||
+            !username ||
+            !password
+        ) {
+
+            return res.status(400).json({
+
+                success: false,
+
+                message:
+                    "جميع الحقول مطلوبة"
+            });
         }
 
-        await db.collection("users").doc(officeId).update({
-            username: username,
-            password: password
+        await db
+            .collection("users")
+            .doc(officeId)
+            .update({
+
+                username,
+                password
+            });
+
+        res.json({
+
+            success: true,
+
+            message:
+                "تم تحديث بيانات الحساب بنجاح"
         });
 
-        res.json({ success: true, message: "تم تحديث بيانات الحساب بنجاح" });
     } catch (err) {
-        console.error("Error updating office account:", err);
-        res.status(500).json({ success: false, message: "حدث خطأ أثناء التحديث" });
+
+        console.error(
+            "Error updating office account:",
+            err
+        );
+
+        res.status(500).json({
+
+            success: false,
+
+            message:
+                "حدث خطأ أثناء التحديث"
+        });
     }
 });
 
 // =======================================================
-// ➕ إضافة وإنشاء مستند مكتب تحصين جديد كلياً
+// ➕ إضافة مكتب جديد
 // =======================================================
 app.post("/add-office-account", async (req, res) => {
+
     try {
-        const { officeName, username, password } = req.body;
-        
-        if (!officeName || !username || !password) {
-            return res.status(400).json({ success: false, message: "جميع الخانات مطلوبة" });
+
+        const {
+            officeName,
+            username,
+            password
+        } = req.body;
+
+        if (
+            !officeName ||
+            !username ||
+            !password
+        ) {
+
+            return res.status(400).json({
+
+                success: false,
+
+                message:
+                    "جميع الخانات مطلوبة"
+            });
         }
 
-        const newDocRef = await db.collection("users").add({
-            officeName: officeName,
-            username: username,
-            password: password,
-            role: "office"
+        const newDocRef =
+            await db
+                .collection("users")
+                .add({
+
+                    officeName,
+                    username,
+                    password,
+
+                    role: "office",
+
+                    createdAt:
+                        new Date()
+                });
+
+        res.json({
+
+            success: true,
+
+            message:
+                "تمت إضافة حساب المكتب الجديد بنجاح",
+
+            id:
+                newDocRef.id
         });
 
-        res.json({ success: true, message: "تمت إضافة حساب المكتب الجديد بنجاح", id: newDocRef.id });
     } catch (err) {
-        console.error("Error adding office account:", err);
-        res.status(500).json({ success: false, message: "خطأ داخلي بالسيرفر أثناء الحفظ" });
+
+        console.error(
+            "Error adding office account:",
+            err
+        );
+
+        res.status(500).json({
+
+            success: false,
+
+            message:
+                "خطأ داخلي بالسيرفر أثناء الحفظ"
+        });
     }
 });
 
 // =======================================================
-// 🗑 حذف وإزالة مكتب تحصين نهائياً من قاعدة البيانات
+// 🗑 حذف مكتب
 // =======================================================
 app.post("/delete-office-account", async (req, res) => {
+
     try {
-        const { officeId } = req.body;
+
+        const { officeId } =
+            req.body;
+
         if (!officeId) {
-            return res.status(400).json({ success: false, message: "معرف المكتب مطلوب للحذف" });
+
+            return res.status(400).json({
+
+                success: false,
+
+                message:
+                    "معرف المكتب مطلوب للحذف"
+            });
         }
 
-        await db.collection("users").doc(officeId).delete();
-        res.json({ success: true, message: "تم حذف حساب المكتب نهائياً من قاعدة البيانات" });
-    } catch (err) {
-        console.error("Error deleting office account:", err);
-        res.status(500).json({ success: false, message: "حدث خطأ بالسيرفر أثناء معالجة الحذف" });
-    }
-});
+        await db
+            .collection("users")
+            .doc(officeId)
+            .delete();
 
-// =======================================================
-// 🔐 تحديث كلمة سر حساب الأدمن الرئيسي
-// =======================================================
-app.post("/update-admin-password", async (req, res) => {
-    try {
-        const { username, newPassword } = req.body;
+        res.json({
 
-        if (!username || !newPassword) {
-            return res.status(400).json({ success: false, message: "البيانات المطلوبة ناقصة" });
-        }
+            success: true,
 
-        const snapshot = await db.collection("users")
-            .where("username", "==", username)
-            .where("role", "==", "admin")
-            .get();
-
-        if (snapshot.empty) {
-            return res.status(444).json({ success: false, message: "حساب الأدمن غير موجود أو غير مصرح له" });
-        }
-
-        const adminDocId = snapshot.docs[0].id;
-        await db.collection("users").doc(adminDocId).update({
-            password: newPassword
+            message:
+                "تم حذف حساب المكتب نهائياً"
         });
 
-        res.json({ success: true, message: "تم تحديث كلمة مرور الأدمن بنجاح" });
     } catch (err) {
-        console.error("Error updating admin password:", err);
-        res.status(500).json({ success: false, message: "حدث خطأ داخلي بالسيرفر أثناء تحديث كلمة السر" });
+
+        console.error(
+            "Error deleting office account:",
+            err
+        );
+
+        res.status(500).json({
+
+            success: false,
+
+            message:
+                "حدث خطأ بالسيرفر أثناء الحذف"
+        });
     }
 });
 
 // =======================================================
-// 📊 [مطور بالكامل] جلب الإحصائيات المجمعة للداشبورد والترتيب والتأكد من مسميات الحقول
+// 🔐 تحديث كلمة سر الأدمن
 // =======================================================
-// استبدل جزء التجميع في server.js بهذا الكود الدقيق:
-// =======================================================
-// 📊 جلب إحصائيات الداشبورد
-// =======================================================
+app.post("/update-admin-password", async (req, res) => {
 
+    try {
+
+        const {
+            username,
+            newPassword
+        } = req.body;
+
+        if (
+            !username ||
+            !newPassword
+        ) {
+
+            return res.status(400).json({
+
+                success: false,
+
+                message:
+                    "البيانات المطلوبة ناقصة"
+            });
+        }
+
+        const snapshot =
+            await db
+                .collection("users")
+                .where(
+                    "username",
+                    "==",
+                    username
+                )
+                .where(
+                    "role",
+                    "==",
+                    "admin"
+                )
+                .get();
+
+        if (snapshot.empty) {
+
+            return res.status(404).json({
+
+                success: false,
+
+                message:
+                    "حساب الأدمن غير موجود"
+            });
+        }
+
+        const adminDocId =
+            snapshot.docs[0].id;
+
+        await db
+            .collection("users")
+            .doc(adminDocId)
+            .update({
+
+                password:
+                    newPassword
+            });
+
+        res.json({
+
+            success: true,
+
+            message:
+                "تم تحديث كلمة مرور الأدمن بنجاح"
+        });
+
+    } catch (err) {
+
+        console.error(
+            "Error updating admin password:",
+            err
+        );
+
+        res.status(500).json({
+
+            success: false,
+
+            message:
+                "حدث خطأ أثناء تحديث كلمة السر"
+        });
+    }
+});
+
+// =======================================================
+// 📊 إحصائيات الداشبورد
+// =======================================================
 app.get("/get-dashboard-stats", async (req, res) => {
 
     try {
 
-        const { from, to } = req.query;
+        const {
+            from,
+            to
+        } = req.query;
 
         if (!from || !to) {
 
             return res.status(400).json({
 
                 success: false,
-                message: "from & to required"
+
+                message:
+                    "from & to required"
             });
         }
 
         const startOfDay =
-            new Date(`${from}T00:00:00.000Z`);
+            new Date(from);
+
+        startOfDay.setHours(
+            0,
+            0,
+            0,
+            0
+        );
 
         const endOfDay =
-            new Date(`${to}T23:59:59.999Z`);
+            new Date(to);
 
-        // ======================================
-        // قراءة التقارير الصحيحة
-        // ======================================
+        endOfDay.setHours(
+            23,
+            59,
+            59,
+            999
+        );
+
+        // ==================================
+        // قراءة التقارير
+        // ==================================
 
         const snapshot =
             await db
@@ -369,9 +735,9 @@ app.get("/get-dashboard-stats", async (req, res) => {
                 )
                 .get();
 
-        // ======================================
+        // ==================================
         // موديل الإحصائيات
-        // ======================================
+        // ==================================
 
         const stats = {
 
@@ -394,9 +760,9 @@ app.get("/get-dashboard-stats", async (req, res) => {
             officePerformance: {}
         };
 
-        // ======================================
+        // ==================================
         // تجميع البيانات
-        // ======================================
+        // ==================================
 
         snapshot.forEach((doc) => {
 
@@ -407,10 +773,6 @@ app.get("/get-dashboard-stats", async (req, res) => {
                 r.officeName ||
                 r.officeCode ||
                 "غير معروف";
-
-            // ==================================
-            // إنشاء المكتب
-            // ==================================
 
             if (
                 !stats.officePerformance[office]
@@ -428,7 +790,9 @@ app.get("/get-dashboard-stats", async (req, res) => {
             // ==================================
 
             const visitors =
-                Number(r.visitors || 0);
+                Number(
+                    r.visitors || 0
+                );
 
             stats.totalVisitors +=
                 visitors;
@@ -437,32 +801,29 @@ app.get("/get-dashboard-stats", async (req, res) => {
                 .visitors += visitors;
 
             // ==================================
-// تنظيف التكلفة
-// ==================================
+            // التكلفة
+            // ==================================
 
-const rawCost =
+            const rawCost =
 
-    r.totalCost ??
-    r.cost ??
-    r.total ??
-    r.price ??
-    r.amount ??
-    r.money ??
-    r.fees ??
-    0;
+                r.totalCost ??
+                r.cost ??
+                r.total ??
+                r.price ??
+                r.amount ??
+                r.money ??
+                r.fees ??
+                0;
 
-// تحويل ذكي للنصوص
-const totalCost = parseFloat(
+            const totalCost =
+                parseFloat(
 
-    String(rawCost)
+                    String(rawCost)
+                        .replace(/,/g, "")
+                        .replace(/[^\d.-]/g, "")
+                        .trim()
 
-        .replace(/,/g, "")
-
-        .replace(/[^\d.-]/g, "")
-
-        .trim()
-
-) || 0;
+                ) || 0;
 
             stats.totalCost +=
                 totalCost;
@@ -471,7 +832,7 @@ const totalCost = parseFloat(
                 .cost += totalCost;
 
             // ==================================
-            // الحمى الصفراء
+            // التطعيمات
             // ==================================
 
             stats.vaccineUsage.yellow +=
@@ -484,10 +845,6 @@ const totalCost = parseFloat(
                     r.yellowForeigners || 0
                 );
 
-            // ==================================
-            // الكوليرا
-            // ==================================
-
             stats.vaccineUsage.cholera +=
 
                 Number(
@@ -498,19 +855,11 @@ const totalCost = parseFloat(
                     r.choleraDose2 || 0
                 );
 
-            // ==================================
-            // سولك
-            // ==================================
-
             stats.vaccineUsage.solk +=
 
                 Number(
                     r.solkUsed || 0
                 );
-
-            // ==================================
-            // باستير
-            // ==================================
 
             stats.vaccineUsage.pasteur +=
 
@@ -530,10 +879,6 @@ const totalCost = parseFloat(
                     r.pasteurTravelers || 0
                 );
 
-            // ==================================
-            // فايزر
-            // ==================================
-
             stats.vaccineUsage.pfizer +=
 
                 Number(
@@ -552,19 +897,11 @@ const totalCost = parseFloat(
                     r.pfizerTravelers || 0
                 );
 
-            // ==================================
-            // الثنائي
-            // ==================================
-
             stats.vaccineUsage.dual +=
 
                 Number(
                     r.dualUsed || 0
                 );
-
-            // ==================================
-            // الإنفلونزا
-            // ==================================
 
             stats.vaccineUsage.flu +=
 
@@ -580,10 +917,6 @@ const totalCost = parseFloat(
                     r.fluCitizens || 0
                 );
 
-            // ==================================
-            // الكبدي
-            // ==================================
-
             stats.vaccineUsage.hep +=
 
                 Number(
@@ -595,13 +928,14 @@ const totalCost = parseFloat(
                 );
         });
 
-        // ======================================
+        // ==================================
         // إرسال النتيجة
-        // ======================================
+        // ==================================
 
         res.json({
 
             success: true,
+
             stats
         });
 
@@ -615,16 +949,26 @@ const totalCost = parseFloat(
         res.status(500).json({
 
             success: false,
-            message: err.message
+
+            message:
+                err.message
         });
     }
 });
 
 // =======================================================
-// 🚀 تشغيل الخادم والإنصات للمنافذ
+// 🚀 تشغيل السيرفر
 // =======================================================
-const PORT = process.env.PORT || 5000;
-// أضف '0.0.0.0' هنا:
-app.listen(PORT, '0.0.0.0', () => {
-    console.log(`⚡ Cairo Quarantine Backend is running securely on port ${PORT}`);
-});
+const PORT =
+    process.env.PORT || 5000;
+
+app.listen(
+    PORT,
+    "0.0.0.0",
+    () => {
+
+        console.log(
+            `⚡ Cairo Quarantine Backend Running On Port ${PORT}`
+        );
+    }
+);
