@@ -86,7 +86,10 @@ app.post("/save-report", async (req, res) => {
             lostCertificates: Number(req.body.lostCertificates) || 0,
             covidStatements: Number(req.body.covidStatements) || 0,
             visitors: Number(req.body.visitors) || 0,
-            createdAt: new Date()
+            createdAt: {
+              type: Date,
+               default: Date.now
+            }
         };
 
         await db.collection("reports").add(report);
@@ -125,41 +128,77 @@ app.post("/save-balances", async (req, res) => {
 // 📋 جلب كافة التقارير المجمعة والأرصدة لشاشة التقارير المتقدمة
 // =======================================================
 app.get("/get-all-reports", async (req, res) => {
+
     try {
+
         const { from, to } = req.query;
 
+        // =====================================
+        // التحقق من التواريخ
+        // =====================================
+
         if (!from || !to) {
-            return res.status(400).json({ success: false, message: "نطاق تاريخ الفلترة مطلوب (from & to)" });
+
+            return res.json({
+                success: false,
+                message: "يجب إرسال from و to"
+            });
         }
 
-        const startOfDay = new Date(`${from}T00:00:00.000Z`);
-        const endOfDay = new Date(`${to}T23:59:59.999Z`);
+        // =====================================
+        // بداية اليوم
+        // =====================================
 
-        const reportsSnapshot = await db.collection("reports")
-            .where("createdAt", ">=", startOfDay)
-            .where("createdAt", "<=", endOfDay)
-            .get();
+        const fromDate = new Date(from);
 
-        const reports = [];
-        reportsSnapshot.forEach(doc => {
-            reports.push({ id: doc.id, ...doc.data() });
+        fromDate.setHours(0, 0, 0, 0);
+
+        // =====================================
+        // نهاية اليوم
+        // =====================================
+
+        const toDate = new Date(to);
+
+        toDate.setHours(23, 59, 59, 999);
+
+        // =====================================
+        // جلب البيانات
+        // =====================================
+
+        const reports = await Report.find({
+
+            createdAt: {
+
+                $gte: fromDate,
+
+                $lte: toDate
+            }
+
+        }).sort({
+
+            createdAt: 1
         });
 
-        const balancesSnapshot = await db.collection("balances").get();
-        const balances = {};
-        balancesSnapshot.forEach(doc => {
-            balances[doc.id] = doc.data();
-        });
+        return res.json({
 
-        res.json({
             success: true,
-            reports: reports,
-            balances: balances
+
+            reports
         });
 
-    } catch (err) {
-        console.error("Error inside get-all-reports endpoint:", err);
-        res.status(500).json({ success: false, error: err.message });
+    } catch (error) {
+
+        console.error(
+            "/get-all-reports Error =>",
+            error
+        );
+
+        return res.status(500).json({
+
+            success: false,
+
+            message: "حدث خطأ أثناء تحميل التقارير"
+        });
     }
 });
 
