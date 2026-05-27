@@ -1,3 +1,4 @@
+```js
 const express = require("express");
 const cors = require("cors");
 const db = require("./firebase");
@@ -7,466 +8,549 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// =======================================================
-// 🔐 LOGIN
-// =======================================================
-app.post("/login", async (req, res) => {
-    try {
-        const { username, password } = req.body;
+const PORT = process.env.PORT || 3000;
 
-        if (!username || !password) {
-            return res.status(400).json({
-                success: false,
-                message: "برجاء إدخال اسم المستخدم وكلمة المرور"
-            });
-        }
+/* =========================================================
+   HELPERS
+========================================================= */
 
-        const snapshot = await db
-            .collection("users")
-            .where("username", "==", username)
-            .where("password", "==", password)
-            .get();
+function safeNumber(v) {
+    return Number(v) || 0;
+}
 
-        if (snapshot.empty) {
-            return res.json({
-                success: false,
-                message: "بيانات الدخول غير صحيحة"
-            });
-        }
+function calculateReport(report) {
 
-        const userData = snapshot.docs[0].data();
+    // =========================
+    // YELLOW
+    // =========================
 
-        res.json({
-            success: true,
-            user: userData
-        });
+    const yellowUsed =
+        safeNumber(report.yellowEgyptians) +
+        safeNumber(report.yellowForeigners);
 
-    } catch (err) {
-        console.error("Login Error:", err);
-        res.status(500).json({
-            success: false,
-            message: "حدث خطأ في الخادم"
-        });
+    report.yellowRemaining =
+        safeNumber(report.yellowBalance) +
+        safeNumber(report.yellowIncoming) -
+        yellowUsed;
+
+    // =========================
+    // CHOLERA
+    // =========================
+
+    const choleraUsed =
+        safeNumber(report.choleraDose1) +
+        safeNumber(report.choleraDose2);
+
+    report.choleraRemaining =
+        safeNumber(report.choleraBalance) +
+        safeNumber(report.choleraIncoming) -
+        choleraUsed;
+
+    // =========================
+    // SOLK
+    // =========================
+
+    report.solkRemaining =
+        safeNumber(report.solkBalance) +
+        safeNumber(report.solkIncoming) -
+        safeNumber(report.solkUsed);
+
+    // =========================
+    // PASTEUR
+    // =========================
+
+    const pasteurUsed =
+        safeNumber(report.pasteurHajj) +
+        safeNumber(report.pasteurForeignHajj) +
+        safeNumber(report.pasteurOmrah) +
+        safeNumber(report.pasteurTravelers);
+
+    report.pasteurRemaining =
+        safeNumber(report.pasteurBalance) +
+        safeNumber(report.pasteurIncoming) -
+        pasteurUsed;
+
+    // =========================
+    // PFIZER
+    // =========================
+
+    const pfizerUsed =
+        safeNumber(report.pfizerHajj) +
+        safeNumber(report.pfizerForeignHajj) +
+        safeNumber(report.pfizerOmrah) +
+        safeNumber(report.pfizerTravelers);
+
+    report.pfizerRemaining =
+        safeNumber(report.pfizerBalance) +
+        safeNumber(report.pfizerIncoming) -
+        pfizerUsed;
+
+    // =========================
+    // DUAL
+    // =========================
+
+    report.dualRemaining =
+        safeNumber(report.dualBalance) +
+        safeNumber(report.dualIncoming) -
+        safeNumber(report.dualUsed);
+
+    // =========================
+    // FLU
+    // =========================
+
+    const fluUsed =
+        safeNumber(report.fluHajj) +
+        safeNumber(report.fluTravelers) +
+        safeNumber(report.fluCitizens);
+
+    report.fluRemaining =
+        safeNumber(report.fluBalance) +
+        safeNumber(report.fluIncoming) -
+        fluUsed;
+
+    // =========================
+    // HEP
+    // =========================
+
+    const hepUsed =
+        safeNumber(report.hepEgyptians) +
+        safeNumber(report.hepForeigners);
+
+    report.hepRemaining =
+        safeNumber(report.hepBalance) +
+        safeNumber(report.hepIncoming) -
+        hepUsed;
+
+    return report;
+}
+
+function applyPreviousBalances(report, previousReport) {
+
+    if (!previousReport) return report;
+
+    report.yellowBalance =
+        safeNumber(previousReport.yellowRemaining);
+
+    report.choleraBalance =
+        safeNumber(previousReport.choleraRemaining);
+
+    report.solkBalance =
+        safeNumber(previousReport.solkRemaining);
+
+    report.pasteurBalance =
+        safeNumber(previousReport.pasteurRemaining);
+
+    report.pfizerBalance =
+        safeNumber(previousReport.pfizerRemaining);
+
+    report.dualBalance =
+        safeNumber(previousReport.dualRemaining);
+
+    report.fluBalance =
+        safeNumber(previousReport.fluRemaining);
+
+    report.hepBalance =
+        safeNumber(previousReport.hepRemaining);
+
+    return report;
+}
+
+/* =========================================================
+   GET LAST REPORT BEFORE PERIOD
+========================================================= */
+
+async function getPreviousReport(officeCode, currentDateFrom) {
+
+    const snapshot = await db
+        .collection("reports")
+        .where("officeCode", "==", officeCode)
+        .where("dateTo", "<", currentDateFrom)
+        .orderBy("dateTo", "desc")
+        .limit(1)
+        .get();
+
+    if (snapshot.empty) {
+        return null;
     }
-});
 
-// =======================================================
-// 🟢 GET BALANCES
-// =======================================================
-app.get("/get-balances/:officeCode", async (req, res) => {
-    try {
-        const { officeCode } = req.params;
+    return {
+        id: snapshot.docs[0].id,
+        ...snapshot.docs[0].data()
+    };
+}
 
-        const doc = await db
-            .collection("balances")
-            .doc(officeCode)
-            .get();
+/* =========================================================
+   RECALCULATE CHAIN
+========================================================= */
 
-        if (!doc.exists) {
-            return res.json({
-                success: false,
-                message: "لا توجد أرصدة"
-            });
-        }
+async function recalculateFutureReports(officeCode) {
 
-        res.json({
-            success: true,
-            balances: doc.data()
-        });
+    const snapshot = await db
+        .collection("reports")
+        .where("officeCode", "==", officeCode)
+        .orderBy("dateFrom", "asc")
+        .get();
 
-    } catch (err) {
-        console.error("Get Balances Error:", err);
-        res.status(500).json({ success: false });
-    }
-});
+    if (snapshot.empty) return;
 
-// =======================================================
-// 💾 SAVE REPORT (ORIGINAL - NO CHANGE)
-// =======================================================
-app.post("/save-report", async (req, res) => {
-    try {
-        const report = {
-            ...req.body,
-            lostCertificates: Number(req.body.lostCertificates) || 0,
-            covidStatements: Number(req.body.covidStatements) || 0,
-            visitors: Number(req.body.visitors) || 0,
-            createdAt: new Date()
+    let previous = null;
+
+    for (const doc of snapshot.docs) {
+
+        let report = {
+            id: doc.id,
+            ...doc.data()
         };
 
-        await db.collection("reports").add(report);
+        // APPLY PREVIOUS BALANCES
+        if (previous) {
 
-        res.json({ success: true });
+            report.yellowBalance =
+                safeNumber(previous.yellowRemaining);
+
+            report.choleraBalance =
+                safeNumber(previous.choleraRemaining);
+
+            report.solkBalance =
+                safeNumber(previous.solkRemaining);
+
+            report.pasteurBalance =
+                safeNumber(previous.pasteurRemaining);
+
+            report.pfizerBalance =
+                safeNumber(previous.pfizerRemaining);
+
+            report.dualBalance =
+                safeNumber(previous.dualRemaining);
+
+            report.fluBalance =
+                safeNumber(previous.fluRemaining);
+
+            report.hepBalance =
+                safeNumber(previous.hepRemaining);
+        }
+
+        // RECALCULATE
+        report = calculateReport(report);
+
+        // UPDATE FIRESTORE
+        await db
+            .collection("reports")
+            .doc(doc.id)
+            .update({
+
+                yellowBalance: report.yellowBalance,
+                yellowRemaining: report.yellowRemaining,
+
+                choleraBalance: report.choleraBalance,
+                choleraRemaining: report.choleraRemaining,
+
+                solkBalance: report.solkBalance,
+                solkRemaining: report.solkRemaining,
+
+                pasteurBalance: report.pasteurBalance,
+                pasteurRemaining: report.pasteurRemaining,
+
+                pfizerBalance: report.pfizerBalance,
+                pfizerRemaining: report.pfizerRemaining,
+
+                dualBalance: report.dualBalance,
+                dualRemaining: report.dualRemaining,
+
+                fluBalance: report.fluBalance,
+                fluRemaining: report.fluRemaining,
+
+                hepBalance: report.hepBalance,
+                hepRemaining: report.hepRemaining,
+
+                recalculatedAt: new Date()
+            });
+
+        previous = report;
+    }
+}
+
+/* =========================================================
+   SAVE REPORT
+========================================================= */
+
+app.post("/save-report", async (req, res) => {
+
+    try {
+
+        const report = req.body;
+
+        // VALIDATION
+        const invalidIncoming = [
+
+            "yellowIncoming",
+            "choleraIncoming",
+            "solkIncoming",
+            "pasteurIncoming",
+            "pfizerIncoming",
+            "dualIncoming",
+            "fluIncoming",
+            "hepIncoming"
+
+        ].some(field => safeNumber(report[field]) < 0);
+
+        if (invalidIncoming) {
+            return res.status(400).json({
+                success: false,
+                message: "الوارد لا يمكن أن يكون بالسالب"
+            });
+        }
+
+        // CHECK EXISTING REPORT
+        const existingSnapshot = await db
+            .collection("reports")
+            .where("officeCode", "==", report.officeCode)
+            .where("dateFrom", "==", report.dateFrom)
+            .where("dateTo", "==", report.dateTo)
+            .limit(1)
+            .get();
+
+        // GET PREVIOUS REPORT
+        const previousReport =
+            await getPreviousReport(
+                report.officeCode,
+                report.dateFrom
+            );
+
+        // APPLY BALANCES
+        applyPreviousBalances(report, previousReport);
+
+        // CALCULATE
+        calculateReport(report);
+
+        report.createdAt = new Date();
+        report.updatedAt = new Date();
+
+        // =========================
+        // UPDATE EXISTING
+        // =========================
+
+        let reportId = null;
+
+        if (!existingSnapshot.empty) {
+
+            reportId = existingSnapshot.docs[0].id;
+
+            await db
+                .collection("reports")
+                .doc(reportId)
+                .update(report);
+
+        } else {
+
+            const saved =
+                await db
+                    .collection("reports")
+                    .add(report);
+
+            reportId = saved.id;
+        }
+
+        // =========================
+        // RECALCULATE FUTURE REPORTS
+        // =========================
+
+        await recalculateFutureReports(report.officeCode);
+
+        return res.json({
+            success: true,
+            reportId
+        });
 
     } catch (err) {
-        console.error("Save Report Error:", err);
-        res.status(500).json({ success: false });
+
+        console.error(err);
+
+        return res.status(500).json({
+            success: false,
+            message: "Server Error"
+        });
     }
 });
 
+/* =========================================================
+   GET REPORT BY PERIOD
+========================================================= */
 
-// =======================================================
-// 🔍 NEW: CHECK REPORT EXISTS (SAFE ADDITION)
-// =======================================================
-app.get("/check-report-exists", async (req, res) => {
+app.get("/get-report", async (req, res) => {
+
     try {
-        const { officeCode, dateFrom, dateTo } = req.query;
 
-        if (!officeCode || !dateFrom || !dateTo) {
-            return res.status(400).json({
-                success: false,
-                message: "missing params"
-            });
-        }
+        const {
+            officeCode,
+            dateFrom,
+            dateTo
+        } = req.query;
 
         const snapshot = await db
             .collection("reports")
             .where("officeCode", "==", officeCode)
-            .get();
-
-        let found = null;
-
-        snapshot.forEach(doc => {
-            const data = doc.data();
-
-            if (
-                data.dateFrom === dateFrom &&
-                data.dateTo === dateTo
-            ) {
-                found = {
-                    id: doc.id,
-                    ...data
-                };
-            }
-        });
-
-        if (!found) {
-            return res.json({ exists: false });
-        }
-
-        res.json({
-            exists: true,
-            reportId: found.id,
-            data: found
-        });
-
-    } catch (err) {
-        console.error("Check Report Error:", err);
-        res.status(500).json({ success: false });
-    }
-});
-
-
-// =======================================================
-// ✏️ NEW: UPDATE REPORT (SAFE ADDITION)
-// =======================================================
-app.put("/update-report/:id", async (req, res) => {
-    try {
-        const { id } = req.params;
-
-        const report = {
-            ...req.body,
-            updatedAt: new Date()
-        };
-
-        await db
-            .collection("reports")
-            .doc(id)
-            .set(report, { merge: true });
-
-        res.json({ success: true });
-
-    } catch (err) {
-        console.error("Update Report Error:", err);
-        res.status(500).json({ success: false });
-    }
-});
-
-
-// =======================================================
-// 💾 SAVE BALANCES (UNCHANGED)
-// =======================================================
-app.post("/save-balances", async (req, res) => {
-    try {
-        const { officeCode, balances } = req.body;
-
-        if (!officeCode || !balances) {
-            return res.status(400).json({
-                success: false,
-                message: "بيانات ناقصة"
-            });
-        }
-
-        await db
-            .collection("balances")
-            .doc(officeCode)
-            .set(balances);
-
-        res.json({ success: true });
-
-    } catch (err) {
-        console.error("Save Balances Error:", err);
-        res.status(500).json({ success: false });
-    }
-});
-
-
-// =======================================================
-// 🔥 GET ALL REPORTS (UNCHANGED LOGIC)
-// =======================================================
-app.get("/get-all-reports", async (req, res) => {
-    try {
-        const { from, to } = req.query;
-
-        if (!from || !to) {
-            return res.status(400).json({
-                success: false,
-                message: "from & to required"
-            });
-        }
-
-        const snapshot = await db.collection("reports").get();
-
-        const reports = [];
-
-        snapshot.forEach(doc => {
-            const r = { id: doc.id, ...doc.data() };
-
-            const overlaps =
-                (r.dateFrom || "") <= to &&
-                (r.dateTo || "") >= from;
-
-            if (overlaps) {
-                reports.push(r);
-            }
-        });
-
-        res.json({ success: true, reports });
-
-    } catch (err) {
-        console.error("GET REPORTS ERROR:", err);
-        res.status(500).json({
-            success: false,
-            error: err.message
-        });
-    }
-});
-
-
-// =======================================================
-// 🏢 GET OFFICES (UNCHANGED)
-// =======================================================
-app.get("/get-all-offices", async (req, res) => {
-    try {
-        const snapshot = await db
-            .collection("users")
-            .where("role", "==", "office")
-            .get();
-
-        const offices = [];
-
-        snapshot.forEach(doc => {
-            offices.push({ id: doc.id, ...doc.data() });
-        });
-
-        res.json({ success: true, offices });
-
-    } catch (err) {
-        console.error("Get Offices Error:", err);
-        res.status(500).json({ success: false });
-    }
-});
-
-
-// =======================================================
-// ➕ ADD OFFICE (UNCHANGED)
-// =======================================================
-app.post("/add-office-account", async (req, res) => {
-    try {
-        const { officeName, username, password } = req.body;
-
-        const newDoc = await db.collection("users").add({
-            officeName,
-            username,
-            password,
-            role: "office"
-        });
-
-        res.json({ success: true, id: newDoc.id });
-
-    } catch (err) {
-        console.error("Add Office Error:", err);
-        res.status(500).json({ success: false });
-    }
-});
-
-
-// =======================================================
-// ✏️ UPDATE OFFICE (UNCHANGED)
-// =======================================================
-app.post("/update-office-account", async (req, res) => {
-    try {
-        const { officeId, username, password } = req.body;
-
-        await db.collection("users")
-            .doc(officeId)
-            .update({ username, password });
-
-        res.json({ success: true });
-
-    } catch (err) {
-        console.error("Update Office Error:", err);
-        res.status(500).json({ success: false });
-    }
-});
-
-
-// =======================================================
-// 🗑 DELETE OFFICE (UNCHANGED)
-// =======================================================
-app.post("/delete-office-account", async (req, res) => {
-    try {
-        const { officeId } = req.body;
-
-        await db.collection("users")
-            .doc(officeId)
-            .delete();
-
-        res.json({ success: true });
-
-    } catch (err) {
-        console.error("Delete Office Error:", err);
-        res.status(500).json({ success: false });
-    }
-});
-
-
-// =======================================================
-// 🔐 UPDATE ADMIN PASSWORD (UNCHANGED)
-// =======================================================
-app.post("/update-admin-password", async (req, res) => {
-    try {
-        const { username, newPassword } = req.body;
-
-        const snapshot = await db.collection("users")
-            .where("username", "==", username)
-            .where("role", "==", "admin")
+            .where("dateFrom", "==", dateFrom)
+            .where("dateTo", "==", dateTo)
+            .limit(1)
             .get();
 
         if (snapshot.empty) {
-            return res.status(404).json({
-                success: false,
-                message: "الأدمن غير موجود"
+
+            return res.json({
+                success: false
             });
         }
 
-        const adminId = snapshot.docs[0].id;
+        const doc = snapshot.docs[0];
 
-        await db.collection("users")
-            .doc(adminId)
-            .update({ password: newPassword });
-
-        res.json({ success: true });
+        return res.json({
+            success: true,
+            report: {
+                id: doc.id,
+                ...doc.data()
+            }
+        });
 
     } catch (err) {
-        console.error("Admin Password Error:", err);
-        res.status(500).json({ success: false });
+
+        console.error(err);
+
+        return res.status(500).json({
+            success: false
+        });
     }
 });
 
+/* =========================================================
+   GET BALANCES
+========================================================= */
 
-// =======================================================
-// 📊 DASHBOARD STATS (UNCHANGED)
-// =======================================================
-app.get("/get-dashboard-stats", async (req, res) => {
+app.get("/get-balances/:officeCode", async (req, res) => {
+
     try {
-        const { from, to } = req.query;
 
-        if (!from || !to) {
-            return res.status(400).json({
-                success: false,
-                message: "from & to required"
-            });
-        }
+        const officeCode = req.params.officeCode;
 
-        const snapshot = await db.collection("reports").get();
+        // GET LAST REPORT
+        const snapshot = await db
+            .collection("reports")
+            .where("officeCode", "==", officeCode)
+            .orderBy("dateTo", "desc")
+            .limit(1)
+            .get();
 
-        const stats = {
-            totalVisitors: 0,
-            totalCost: 0,
-            vaccineUsage: {
-                yellow: 0,
-                cholera: 0,
-                solk: 0,
-                pasteur: 0,
-                pfizer: 0,
-                dual: 0,
-                flu: 0,
-                hep: 0
-            },
-            officePerformance: {}
-        };
+        // IF NO REPORTS
+        if (snapshot.empty) {
 
-        snapshot.forEach(doc => {
-            const r = doc.data();
+            const openingDoc = await db
+                .collection("opening_balances")
+                .doc(officeCode)
+                .get();
 
-            const overlaps =
-                (r.dateFrom || "") <= to &&
-                (r.dateTo || "") >= from;
+            if (!openingDoc.exists) {
 
-            if (!overlaps) return;
-
-            const office = r.officeName || r.officeCode || "غير معروف";
-
-            if (!stats.officePerformance[office]) {
-                stats.officePerformance[office] = {
-                    visitors: 0,
-                    cost: 0
-                };
+                return res.json({
+                    success: true,
+                    balances: {}
+                });
             }
 
-            const visitors = Number(r.visitors || 0);
+            return res.json({
+                success: true,
+                balances: openingDoc.data()
+            });
+        }
 
-            stats.totalVisitors += visitors;
-            stats.officePerformance[office].visitors += visitors;
+        const lastReport = snapshot.docs[0].data();
 
-            const rawCost = r.totalCost ?? 0;
+        return res.json({
+            success: true,
+            balances: {
 
-            const totalCost = parseFloat(
-                String(rawCost)
-                    .replace(/,/g, "")
-                    .replace(/[^\d.-]/g, "")
-            ) || 0;
+                yellowBalance:
+                    safeNumber(lastReport.yellowRemaining),
 
-            stats.totalCost += totalCost;
-            stats.officePerformance[office].cost += totalCost;
+                choleraBalance:
+                    safeNumber(lastReport.choleraRemaining),
 
-            stats.vaccineUsage.yellow += Number(r.yellowEgyptians || 0) + Number(r.yellowForeigners || 0);
-            stats.vaccineUsage.cholera += Number(r.choleraDose1 || 0) + Number(r.choleraDose2 || 0);
-            stats.vaccineUsage.solk += Number(r.solkUsed || 0);
-            stats.vaccineUsage.pasteur += Number(r.pasteurHajj || 0) + Number(r.pasteurForeignHajj || 0) + Number(r.pasteurOmrah || 0) + Number(r.pasteurTravelers || 0);
-            stats.vaccineUsage.pfizer += Number(r.pfizerHajj || 0) + Number(r.pfizerForeignHajj || 0) + Number(r.pfizerOmrah || 0) + Number(r.pfizerTravelers || 0);
-            stats.vaccineUsage.dual += Number(r.dualUsed || 0);
-            stats.vaccineUsage.flu += Number(r.fluHajj || 0) + Number(r.fluTravelers || 0) + Number(r.fluCitizens || 0);
-            stats.vaccineUsage.hep += Number(r.hepEgyptians || 0) + Number(r.hepForeigners || 0);
+                solkBalance:
+                    safeNumber(lastReport.solkRemaining),
+
+                pasteurBalance:
+                    safeNumber(lastReport.pasteurRemaining),
+
+                pfizerBalance:
+                    safeNumber(lastReport.pfizerRemaining),
+
+                dualBalance:
+                    safeNumber(lastReport.dualRemaining),
+
+                fluBalance:
+                    safeNumber(lastReport.fluRemaining),
+
+                hepBalance:
+                    safeNumber(lastReport.hepRemaining)
+            }
         });
 
-        res.json({ success: true, stats });
-
     } catch (err) {
-        console.error("Dashboard Error:", err);
-        res.status(500).json({
-            success: false,
-            message: err.message
+
+        console.error(err);
+
+        return res.status(500).json({
+            success: false
         });
     }
 });
 
+/* =========================================================
+   GET ALL REPORTS
+========================================================= */
 
-// =======================================================
-// 🚀 START SERVER
-// =======================================================
-const PORT = process.env.PORT || 5000;
+app.get("/get-all-reports", async (req, res) => {
 
-app.listen(PORT, "0.0.0.0", () => {
-    console.log(`⚡ Server running on port ${PORT}`);
+    try {
+
+        const snapshot =
+            await db
+                .collection("reports")
+                .orderBy("createdAt", "desc")
+                .get();
+
+        const reports = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+        }));
+
+        return res.json({
+            success: true,
+            reports
+        });
+
+    } catch (err) {
+
+        console.error(err);
+
+        return res.status(500).json({
+            success: false
+        });
+    }
 });
+
+/* =========================================================
+   ROOT
+========================================================= */
+
+app.get("/", (req, res) => {
+    res.send("Server Running...");
+});
+
+/* =========================================================
+   START
+========================================================= */
+
+app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+});
+```
