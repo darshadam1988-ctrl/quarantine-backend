@@ -7,386 +7,328 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-const PORT = process.env.PORT || 3000;
+// =======================================================
+// 🔐 منظومة تسجيل الدخول (LOGIN SYSTEM)
+// =======================================================
+app.post("/login", async (req, res) => {
+    try {
+        const { username, password } = req.body;
 
-/* =========================================================
-HELPERS
-========================================================= */
-
-function num(v) {
-return Number(v) || 0;
-}
-
-function calculateRemaining(balance, incoming, used) {
-return num(balance) + num(incoming) - num(used);
-}
-
-/* =========================================================
-ROOT
-========================================================= */
-
-app.get("/", (req, res) => {
-res.send("Server Running...");
-});
-
-/* =========================================================
-GET CURRENT BALANCES
-========================================================= */
-
-app.get("/get-balances/:officeCode", async (req, res) => {
-
-```
-try {
-
-    const officeCode = req.params.officeCode;
-
-    const balanceDoc = await db
-        .collection("balances")
-        .doc(officeCode)
-        .get();
-
-    if (balanceDoc.exists) {
-
-        return res.json({
-            success: true,
-            balances: balanceDoc.data()
-        });
-    }
-
-    const openingDoc = await db
-        .collection("opening_balances")
-        .doc(officeCode)
-        .get();
-
-    if (!openingDoc.exists) {
-
-        return res.json({
-            success: true,
-            balances: {}
-        });
-    }
-
-    return res.json({
-        success: true,
-        balances: openingDoc.data()
-    });
-
-} catch (err) {
-
-    console.error(err);
-
-    return res.status(500).json({
-        success: false,
-        message: err.message
-    });
-}
-```
-
-});
-
-/* =========================================================
-GET REPORT
-========================================================= */
-
-app.get("/get-report", async (req, res) => {
-
-```
-try {
-
-    const {
-        officeCode,
-        dateFrom,
-        dateTo
-    } = req.query;
-
-    const snapshot = await db
-        .collection("reports")
-        .where("officeCode", "==", officeCode)
-        .where("dateFrom", "==", dateFrom)
-        .where("dateTo", "==", dateTo)
-        .limit(1)
-        .get();
-
-    if (snapshot.empty) {
-
-        return res.json({
-            success: false
-        });
-    }
-
-    const reportDoc = snapshot.docs[0];
-
-    return res.json({
-        success: true,
-        report: {
-            id: reportDoc.id,
-            ...reportDoc.data()
+        if (!username || !password) {
+            return res.status(400).json({
+                success: false,
+                message: "برجاء إدخال اسم المستخدم وكلمة المرور"
+            });
         }
-    });
 
-} catch (err) {
+        const snapshot = await db
+            .collection("users")
+            .where("username", "==", username)
+            .where("password", "==", password)
+            .get();
 
-    console.error(err);
+        if (snapshot.empty) {
+            return res.json({
+                success: false,
+                message: "بيانات الدخول غير صحيحة"
+            });
+        }
 
-    return res.status(500).json({
-        success: false,
-        message: err.message
-    });
-}
-```
+        const userData = snapshot.docs[0].data();
+        console.log("LOGIN SUCCESS:", userData);
 
-});
-
-/* =========================================================
-SAVE REPORT
-========================================================= */
-
-app.post("/save-report", async (req, res) => {
-
-```
-try {
-
-    const report = {
-        ...req.body
-    };
-
-    if (
-        !report.officeCode ||
-        !report.dateFrom ||
-        !report.dateTo
-    ) {
-
-        return res.status(400).json({
-            success: false,
-            message: "بيانات ناقصة"
+        res.json({
+            success: true,
+            user: userData
         });
+
+    } catch (err) {
+        console.error("Login Error:", err);
+        res.status(500).json({ success: false, message: "حدث خطأ في الخادم" });
     }
-
-    /* =========================
-       CALCULATIONS
-    ========================= */
-
-    const yellowUsed =
-        num(report.yellowEgyptians) +
-        num(report.yellowForeigners);
-
-    report.yellowRemaining =
-        calculateRemaining(
-            report.yellowBalance,
-            report.yellowIncoming,
-            yellowUsed
-        );
-
-    const choleraUsed =
-        num(report.choleraDose1) +
-        num(report.choleraDose2);
-
-    report.choleraRemaining =
-        calculateRemaining(
-            report.choleraBalance,
-            report.choleraIncoming,
-            choleraUsed
-        );
-
-    report.solkRemaining =
-        calculateRemaining(
-            report.solkBalance,
-            report.solkIncoming,
-            report.solkUsed
-        );
-
-    const pasteurUsed =
-        num(report.pasteurHajj) +
-        num(report.pasteurForeignHajj) +
-        num(report.pasteurOmrah) +
-        num(report.pasteurTravelers);
-
-    report.pasteurRemaining =
-        calculateRemaining(
-            report.pasteurBalance,
-            report.pasteurIncoming,
-            pasteurUsed
-        );
-
-    const pfizerUsed =
-        num(report.pfizerHajj) +
-        num(report.pfizerForeignHajj) +
-        num(report.pfizerOmrah) +
-        num(report.pfizerTravelers);
-
-    report.pfizerRemaining =
-        calculateRemaining(
-            report.pfizerBalance,
-            report.pfizerIncoming,
-            pfizerUsed
-        );
-
-    report.dualRemaining =
-        calculateRemaining(
-            report.dualBalance,
-            report.dualIncoming,
-            report.dualUsed
-        );
-
-    const fluUsed =
-        num(report.fluHajj) +
-        num(report.fluTravelers) +
-        num(report.fluCitizens);
-
-    report.fluRemaining =
-        calculateRemaining(
-            report.fluBalance,
-            report.fluIncoming,
-            fluUsed
-        );
-
-    const hepUsed =
-        num(report.hepEgyptians) +
-        num(report.hepForeigners);
-
-    report.hepRemaining =
-        calculateRemaining(
-            report.hepBalance,
-            report.hepIncoming,
-            hepUsed
-        );
-
-    report.updatedAt = new Date();
-
-    /* =========================
-       CHECK EXISTING REPORT
-    ========================= */
-
-    const existingSnapshot = await db
-        .collection("reports")
-        .where("officeCode", "==", report.officeCode)
-        .where("dateFrom", "==", report.dateFrom)
-        .where("dateTo", "==", report.dateTo)
-        .limit(1)
-        .get();
-
-    let reportId = null;
-
-    if (!existingSnapshot.empty) {
-
-        reportId =
-            existingSnapshot.docs[0].id;
-
-        await db
-            .collection("reports")
-            .doc(reportId)
-            .update(report);
-
-    } else {
-
-        report.createdAt = new Date();
-
-        const savedDoc = await db
-            .collection("reports")
-            .add(report);
-
-        reportId = savedDoc.id;
-    }
-
-    /* =========================
-       UPDATE LIVE BALANCES
-    ========================= */
-
-    const balances = {
-
-        yellowBalance:
-            num(report.yellowRemaining),
-
-        choleraBalance:
-            num(report.choleraRemaining),
-
-        solkBalance:
-            num(report.solkRemaining),
-
-        pasteurBalance:
-            num(report.pasteurRemaining),
-
-        pfizerBalance:
-            num(report.pfizerRemaining),
-
-        dualBalance:
-            num(report.dualRemaining),
-
-        fluBalance:
-            num(report.fluRemaining),
-
-        hepBalance:
-            num(report.hepRemaining),
-
-        updatedAt:
-            new Date()
-    };
-
-    await db
-        .collection("balances")
-        .doc(report.officeCode)
-        .set(balances);
-
-    return res.json({
-        success: true,
-        reportId
-    });
-
-} catch (err) {
-
-    console.error(err);
-
-    return res.status(500).json({
-        success: false,
-        message: err.message
-    });
-}
-```
-
 });
 
-/* =========================================================
-GET ALL REPORTS
-========================================================= */
+// =======================================================
+// 🟢 جلب الأرصدة الحالية لمكتب معين عبر الـ Params
+// =======================================================
+app.get("/get-balances/:officeCode", async (req, res) => {
+    try {
+        const { officeCode } = req.params;
 
+        if (!officeCode) {
+            return res.status(400).json({ success: false, message: "كود المكتب مطلوب" });
+        }
+
+        const doc = await db.collection("balances").doc(officeCode).get();
+
+        if (!doc.exists) {
+            return res.json({ success: false, message: "لا توجد أرصدة مسجلة لهذا المكتب" });
+        }
+
+        res.json({
+            success: true,
+            balances: doc.data()
+        });
+
+    } catch (err) {
+        console.error("Get Balances Error:", err);
+        res.status(500).json({ success: false });
+    }
+});
+
+// =======================================================
+// 💾 حفظ التقرير اليومي الصادر من المكاتب
+// =======================================================
+app.post("/save-report", async (req, res) => {
+    try {
+        const report = {
+            ...req.body,
+            lostCertificates: Number(req.body.lostCertificates) || 0,
+            covidStatements: Number(req.body.covidStatements) || 0,
+            visitors: Number(req.body.visitors) || 0,
+            createdAt: new Date()
+        };
+
+        await db.collection("reports").add(report);
+        res.json({ success: true });
+
+    } catch (err) {
+        console.error("Save Report Error:", err);
+        res.status(500).json({ success: false });
+    }
+});
+
+// =======================================================
+// ⚙️ حفظ وتحديث الأرصدة الحية
+// =======================================================
+app.post("/save-balances", async (req, res) => {
+    try {
+        const { officeCode, balances } = req.body;
+
+        if (!officeCode || !balances) {
+            return res.status(400).json({ success: false, message: "بيانات ناقصة" });
+        }
+
+        await db.collection("balances")
+            .doc(officeCode)
+            .set(balances);
+
+        res.json({ success: true });
+
+    } catch (err) {
+        console.error("Save Balances Error:", err);
+        res.status(500).json({ success: false });
+    }
+});
+
+// =======================================================
+// 📋 جلب كافة التقارير المجمعة والأرصدة لشاشة التقارير المتقدمة
+// =======================================================
 app.get("/get-all-reports", async (req, res) => {
+    try {
+        const { from, to } = req.query;
 
-```
-try {
+        if (!from || !to) {
+            return res.status(400).json({ success: false, message: "نطاق تاريخ الفلترة مطلوب (from & to)" });
+        }
 
-    const snapshot = await db
-        .collection("reports")
-        .orderBy("createdAt", "desc")
-        .get();
+        const startOfDay = new Date(`${from}T00:00:00.000Z`);
+        const endOfDay = new Date(`${to}T23:59:59.999Z`);
 
-    const reports = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-    }));
+        const reportsSnapshot = await db.collection("reports")
+            .where("createdAt", ">=", startOfDay)
+            .where("createdAt", "<=", endOfDay)
+            .get();
 
-    return res.json({
-        success: true,
-        reports
-    });
+        const reports = [];
+        reportsSnapshot.forEach(doc => {
+            reports.push({ id: doc.id, ...doc.data() });
+        });
 
-} catch (err) {
+        const balancesSnapshot = await db.collection("balances").get();
+        const balances = {};
+        balancesSnapshot.forEach(doc => {
+            balances[doc.id] = doc.data();
+        });
 
-    console.error(err);
+        res.json({
+            success: true,
+            reports: reports,
+            balances: balances
+        });
 
-    return res.status(500).json({
-        success: false
-    });
-}
-```
-
+    } catch (err) {
+        console.error("Error inside get-all-reports endpoint:", err);
+        res.status(500).json({ success: false, error: err.message });
+    }
 });
 
-/* =========================================================
-START SERVER
-========================================================= */
+// =======================================================
+// 🏢 جلب قائمة جميع المكاتب لـ شاشة الإدارة
+// =======================================================
+app.get("/get-all-offices", async (req, res) => {
+    try {
+        const snapshot = await db.collection("users")
+            .where("role", "==", "office")
+            .get();
 
-app.listen(PORT, () => {
+        const offices = [];
+        snapshot.forEach(doc => {
+            offices.push({ id: doc.id, ...doc.data() });
+        });
 
-console.log("Server running on port " + PORT);
+        res.json({ success: true, offices });
+    } catch (err) {
+        console.error("Error fetching offices:", err);
+        res.status(500).json({ success: false, message: "حدث خطأ في جلب المكاتب" });
+    }
+});
 
+// =======================================================
+// 🔄 تحديث بيانات حساب المكتب (اسم المستخدم أو كلمة السر)
+// =======================================================
+app.post("/update-office-account", async (req, res) => {
+    try {
+        const { officeId, username, password } = req.body;
+
+        if (!officeId || !username || !password) {
+            return res.status(400).json({ success: false, message: "جميع الحقول مطلوبة" });
+        }
+
+        await db.collection("users").doc(officeId).update({
+            username: username,
+            password: password
+        });
+
+        res.json({ success: true, message: "تم تحديث بيانات الحساب بنجاح" });
+    } catch (err) {
+        console.error("Error updating office account:", err);
+        res.status(500).json({ success: false, message: "حدث خطأ أثناء التحديث" });
+    }
+});
+
+// =======================================================
+// ➕ إضافة وإنشاء مستند مكتب تحصين جديد كلياً
+// =======================================================
+app.post("/add-office-account", async (req, res) => {
+    try {
+        const { officeName, username, password } = req.body;
+        
+        if (!officeName || !username || !password) {
+            return res.status(400).json({ success: false, message: "جميع الخانات مطلوبة" });
+        }
+
+        const newDocRef = await db.collection("users").add({
+            officeName: officeName,
+            username: username,
+            password: password,
+            role: "office"
+        });
+
+        res.json({ success: true, message: "تمت إضافة حساب المكتب الجديد بنجاح", id: newDocRef.id });
+    } catch (err) {
+        console.error("Error adding office account:", err);
+        res.status(500).json({ success: false, message: "خطأ داخلي بالسيرفر أثناء الحفظ" });
+    }
+});
+
+// =======================================================
+// 🗑 حذف وإزالة مكتب تحصين نهائياً من قاعدة البيانات
+// =======================================================
+app.post("/delete-office-account", async (req, res) => {
+    try {
+        const { officeId } = req.body;
+        if (!officeId) {
+            return res.status(400).json({ success: false, message: "معرف المكتب مطلوب للحذف" });
+        }
+
+        await db.collection("users").doc(officeId).delete();
+        res.json({ success: true, message: "تم حذف حساب المكتب نهائياً من قاعدة البيانات" });
+    } catch (err) {
+        console.error("Error deleting office account:", err);
+        res.status(500).json({ success: false, message: "حدث خطأ بالسيرفر أثناء معالجة الحذف" });
+    }
+});
+
+// =======================================================
+// 🔐 تحديث كلمة سر حساب الأدمن الرئيسي
+// =======================================================
+app.post("/update-admin-password", async (req, res) => {
+    try {
+        const { username, newPassword } = req.body;
+
+        if (!username || !newPassword) {
+            return res.status(400).json({ success: false, message: "البيانات المطلوبة ناقصة" });
+        }
+
+        const snapshot = await db.collection("users")
+            .where("username", "==", username)
+            .where("role", "==", "admin")
+            .get();
+
+        if (snapshot.empty) {
+            return res.status(444).json({ success: false, message: "حساب الأدمن غير موجود أو غير مصرح له" });
+        }
+
+        const adminDocId = snapshot.docs[0].id;
+        await db.collection("users").doc(adminDocId).update({
+            password: newPassword
+        });
+
+        res.json({ success: true, message: "تم تحديث كلمة مرور الأدمن بنجاح" });
+    } catch (err) {
+        console.error("Error updating admin password:", err);
+        res.status(500).json({ success: false, message: "حدث خطأ داخلي بالسيرفر أثناء تحديث كلمة السر" });
+    }
+});
+
+// =======================================================
+// 📊 [مطور بالكامل] جلب الإحصائيات المجمعة للداشبورد والترتيب والتأكد من مسميات الحقول
+// =======================================================
+// استبدل جزء التجميع في server.js بهذا الكود الدقيق:
+app.get("/get-dashboard-stats", async (req, res) => {
+    try {
+        const { from, to } = req.query;
+        // استعلام من Firebase بناءً على التاريخ
+        const snapshot = await db.collection("daily_reports")
+            .where("date", ">=", from)
+            .where("date", "<=", to)
+            .get();
+
+        let stats = {
+            totalVisitors: 0,
+            vaccineUsage: {
+                yellow: 0, cholera: 0, solk: 0, pasteur: 0, 
+                pfizer: 0, dual: 0, flu: 0, hep: 0
+            }
+        };
+
+        snapshot.forEach(doc => {
+            const r = doc.data();
+            stats.totalVisitors += Number(r.totalVisitors || 0);
+            
+            // التجميع الدقيق لكل نوع
+            stats.vaccineUsage.yellow += Number(r.yellowUsed || 0);
+            stats.vaccineUsage.cholera += Number(r.choleraUsed || 0);
+            stats.vaccineUsage.solk += Number(r.solkUsed || 0);
+            stats.vaccineUsage.pasteur += (Number(r.pasteurHajj || 0) + Number(r.pasteurForeign || 0) + Number(r.pasteurOmrah || 0));
+            stats.vaccineUsage.pfizer += (Number(r.pfizerHajj || 0) + Number(r.pfizerForeign || 0) + Number(r.pfizerOmrah || 0));
+            stats.vaccineUsage.dual += Number(r.dualUsed || 0);
+            stats.vaccineUsage.flu += Number(r.fluUsed || 0);
+            stats.vaccineUsage.hep += Number(r.hepUsed || 0);
+        });
+
+        res.json({ success: true, stats });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// =======================================================
+// 🚀 تشغيل الخادم والإنصات للمنافذ
+// =======================================================
+const PORT = process.env.PORT || 5000;
+// أضف '0.0.0.0' هنا:
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`⚡ Cairo Quarantine Backend is running securely on port ${PORT}`);
 });
