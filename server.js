@@ -1,212 +1,334 @@
-<!DOCTYPE html>
-<html lang="ar" dir="rtl">
+const express = require("express");
+const cors = require("cors");
+const db = require("./firebase");
 
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>احصائيات الحجر الصحي بالقاهرة</title>
-    <link rel="stylesheet" href="style.css">
-    <link rel="icon" type="image/x-icon" href="favicon.ico">
+const app = express();
 
-    <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
-    <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
-    <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
-    <link rel="manifest" href="site.webmanifest">
+app.use(cors());
+app.use(express.json());
 
-    <style>
-        .btn-action-group {
-            display: flex;
-            gap: 12px;
-            margin-top: 20px;
-            flex-wrap: wrap;
+// =======================================================
+// 🔐 منظومة تسجيل الدخول (LOGIN SYSTEM)
+// =======================================================
+app.post("/login", async (req, res) => {
+    try {
+        const { username, password } = req.body;
+
+        if (!username || !password) {
+            return res.status(400).json({
+                success: false,
+                message: "برجاء إدخال اسم المستخدم وكلمة المرور"
+            });
         }
 
-        .btn-print-report {
-            background: linear-gradient(135deg, #a855f7, #7c3aed) !important;
-            color: white !important;
-            border: none !important;
-            padding: 12px 20px;
-            border-radius: 8px;
-            cursor: pointer;
-            font-weight: bold;
-            display: none;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-            font-size: 15px;
-            transition: all 0.2s ease;
-            box-shadow: 0 4px 12px rgba(124, 58, 237, 0.3);
+        const snapshot = await db
+            .collection("users")
+            .where("username", "==", username)
+            .where("password", "==", password)
+            .get();
+
+        if (snapshot.empty) {
+            return res.json({
+                success: false,
+                message: "بيانات الدخول غير صحيحة"
+            });
         }
 
-        .btn-print-report:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 16px rgba(124, 58, 237, 0.4);
-            filter: brightness(1.1);
-        }
+        const userData = snapshot.docs[0].data();
+        console.log("LOGIN SUCCESS:", userData);
 
-        .date-filter-box {
-            background: rgba(255, 255, 255, 0.08);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 12px;
-            padding: 15px;
-            margin-bottom: 25px;
-            display: flex;
-            gap: 15px;
-            flex-wrap: wrap;
-            align-items: center;
-        }
+        res.json({
+            success: true,
+            user: userData
+        });
 
-        .date-field {
-            flex: 1;
-            min-width: 140px;
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-        }
-
-        .date-field label {
-            font-size: 14px;
-            font-weight: bold;
-            color: #fff;
-        }
-
-        .date-field input[type="date"] {
-            padding: 10px;
-            border-radius: 6px;
-            border: 1px solid #ccc;
-            font-family: 'Cairo', sans-serif;
-            font-size: 14px;
-            background-color: #fff;
-            color: #000;
-            outline: none;
-        }
-
-        .logout-btn-bottom {
-            position: fixed;
-            bottom: 20px;
-            left: 20px;
-            z-index: 999;
-            background: linear-gradient(to right, #ff4b2b, #ff416c);
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 8px;
-            cursor: pointer;
-            font-weight: bold;
-            font-size: 14px;
-            box-shadow: 0 4px 15px rgba(255, 65, 108, 0.4);
-        }
-
-        .dashboard-container {
-            padding-bottom: 80px;
-        }
-    </style>
-</head>
-
-<body class="dashboard-body">
-
-<div class="dashboard-container">
-
-    <div class="cards-grid"></div>
-
-    <h1>احصائيات الحجر الصحي بالقاهرة</h1>
-
-    <div class="office-box">
-        <span>المكتب الحالي:</span>
-        <span id="officeTitle"></span>
-    </div>
-
-    <!-- ✅ DATE FILTER (UNCHANGED UI) -->
-    <div class="date-filter-box">
-        <div class="date-field">
-            <label for="dateFrom">الفترة من:</label>
-            <input type="date" id="dateFrom">
-        </div>
-        <div class="date-field">
-            <label for="dateTo">إلى تاريخ:</label>
-            <input type="date" id="dateTo">
-        </div>
-    </div>
-
-    <!-- ===== CARDS (UNCHANGED) ===== -->
-
-    <div class="card">
-        <h2>الحمى الصفراء</h2>
-        <div class="grid">
-            <input type="number" id="yellowBalance" readonly>
-            <input type="number" id="yellowIncoming">
-            <input type="number" id="yellowEgyptians">
-            <input type="number" id="yellowForeigners">
-        </div>
-        <div class="results">
-            <p>إجمالي المنصرف: <span id="yellowTotal">0</span></p>
-            <p>المتبقي: <span id="yellowRemaining">0</span></p>
-        </div>
-    </div>
-
-    <!-- باقي الكروت كما هي تماماً (لم يتم حذف أي جزء) -->
-    <!-- ❗ اختصار فقط في العرض هنا لكن في الملف الفعلي عندك سيظل كامل 1:1 -->
-
-    <div class="card total-card">
-        <h2>إجمالي التكلفة الشاملة</h2>
-        <h1 id="grandTotal">0 جنيه</h1>
-
-        <div class="btn-action-group">
-
-            <!-- 🔁 زر واحد فقط (سيتم تحويله بين حفظ / تعديل من JS) -->
-            <button id="saveReportBtn" style="flex:1; min-width:150px;">
-                حفظ التقرير وإرساله للسيرفر 💾
-            </button>
-
-            <button id="printReportBtn" class="btn-print-report"
-                onclick="generatePDFReport()"
-                style="flex:1; min-width:150px;">
-                📄 تحميل التقرير الاسبوعي A4
-            </button>
-
-        </div>
-
-        <p id="saveMessage"></p>
-    </div>
-
-</div>
-
-<button class="logout-btn-bottom" onclick="logout()">
-    <span>تسجيل خروج</span>
-</button>
-
-<script>
-const storedUser = localStorage.getItem("user");
-
-if (!storedUser) window.location.href = "index.html";
-
-const user = JSON.parse(storedUser);
-
-if (!user.role || (user.role !== "office" && user.role !== "admin")) {
-    localStorage.removeItem("user");
-    window.location.href = "index.html";
-}
-
-document.addEventListener("DOMContentLoaded", () => {
-    const officeTitle = document.getElementById("officeTitle");
-    if (officeTitle) {
-        officeTitle.innerText =
-            user.officeName || user.officeCode || user.username || "مكتب غير معروف";
+    } catch (err) {
+        console.error("Login Error:", err);
+        res.status(500).json({ success: false, message: "حدث خطأ في الخادم" });
     }
 });
 
-function logout() {
-    localStorage.removeItem("user");
-    window.location.href = "index.html";
-}
+// =======================================================
+// 🟢 جلب الأرصدة الحالية لمكتب معين عبر الـ Params
+// =======================================================
+app.get("/get-balances/:officeCode", async (req, res) => {
+    try {
+        const { officeCode } = req.params;
 
-/* =========================
-   🔥 NEW FEATURE FLAG
-   ========================= */
-window.isEditMode = false;
-window.existingReportId = null;
-</script>
+        if (!officeCode) {
+            return res.status(400).json({ success: false, message: "كود المكتب مطلوب" });
+        }
 
-<script src="dashboard.js"></script>
-</body>
-</html>
+        const doc = await db.collection("balances").doc(officeCode).get();
+
+        if (!doc.exists) {
+            return res.json({ success: false, message: "لا توجد أرصدة مسجلة لهذا المكتب" });
+        }
+
+        res.json({
+            success: true,
+            balances: doc.data()
+        });
+
+    } catch (err) {
+        console.error("Get Balances Error:", err);
+        res.status(500).json({ success: false });
+    }
+});
+
+// =======================================================
+// 💾 حفظ التقرير اليومي الصادر من المكاتب
+// =======================================================
+app.post("/save-report", async (req, res) => {
+    try {
+        const report = {
+            ...req.body,
+            lostCertificates: Number(req.body.lostCertificates) || 0,
+            covidStatements: Number(req.body.covidStatements) || 0,
+            visitors: Number(req.body.visitors) || 0,
+            createdAt: new Date()
+        };
+
+        await db.collection("reports").add(report);
+        res.json({ success: true });
+
+    } catch (err) {
+        console.error("Save Report Error:", err);
+        res.status(500).json({ success: false });
+    }
+});
+
+// =======================================================
+// ⚙️ حفظ وتحديث الأرصدة الحية
+// =======================================================
+app.post("/save-balances", async (req, res) => {
+    try {
+        const { officeCode, balances } = req.body;
+
+        if (!officeCode || !balances) {
+            return res.status(400).json({ success: false, message: "بيانات ناقصة" });
+        }
+
+        await db.collection("balances")
+            .doc(officeCode)
+            .set(balances);
+
+        res.json({ success: true });
+
+    } catch (err) {
+        console.error("Save Balances Error:", err);
+        res.status(500).json({ success: false });
+    }
+});
+
+// =======================================================
+// 📋 جلب كافة التقارير المجمعة والأرصدة لشاشة التقارير المتقدمة
+// =======================================================
+app.get("/get-all-reports", async (req, res) => {
+    try {
+        const { from, to } = req.query;
+
+        if (!from || !to) {
+            return res.status(400).json({ success: false, message: "نطاق تاريخ الفلترة مطلوب (from & to)" });
+        }
+
+        const startOfDay = new Date(`${from}T00:00:00.000Z`);
+        const endOfDay = new Date(`${to}T23:59:59.999Z`);
+
+        const reportsSnapshot = await db.collection("reports")
+            .where("createdAt", ">=", startOfDay)
+            .where("createdAt", "<=", endOfDay)
+            .get();
+
+        const reports = [];
+        reportsSnapshot.forEach(doc => {
+            reports.push({ id: doc.id, ...doc.data() });
+        });
+
+        const balancesSnapshot = await db.collection("balances").get();
+        const balances = {};
+        balancesSnapshot.forEach(doc => {
+            balances[doc.id] = doc.data();
+        });
+
+        res.json({
+            success: true,
+            reports: reports,
+            balances: balances
+        });
+
+    } catch (err) {
+        console.error("Error inside get-all-reports endpoint:", err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// =======================================================
+// 🏢 جلب قائمة جميع المكاتب لـ شاشة الإدارة
+// =======================================================
+app.get("/get-all-offices", async (req, res) => {
+    try {
+        const snapshot = await db.collection("users")
+            .where("role", "==", "office")
+            .get();
+
+        const offices = [];
+        snapshot.forEach(doc => {
+            offices.push({ id: doc.id, ...doc.data() });
+        });
+
+        res.json({ success: true, offices });
+    } catch (err) {
+        console.error("Error fetching offices:", err);
+        res.status(500).json({ success: false, message: "حدث خطأ في جلب المكاتب" });
+    }
+});
+
+// =======================================================
+// 🔄 تحديث بيانات حساب المكتب (اسم المستخدم أو كلمة السر)
+// =======================================================
+app.post("/update-office-account", async (req, res) => {
+    try {
+        const { officeId, username, password } = req.body;
+
+        if (!officeId || !username || !password) {
+            return res.status(400).json({ success: false, message: "جميع الحقول مطلوبة" });
+        }
+
+        await db.collection("users").doc(officeId).update({
+            username: username,
+            password: password
+        });
+
+        res.json({ success: true, message: "تم تحديث بيانات الحساب بنجاح" });
+    } catch (err) {
+        console.error("Error updating office account:", err);
+        res.status(500).json({ success: false, message: "حدث خطأ أثناء التحديث" });
+    }
+});
+
+// =======================================================
+// ➕ إضافة وإنشاء مستند مكتب تحصين جديد كلياً
+// =======================================================
+app.post("/add-office-account", async (req, res) => {
+    try {
+        const { officeName, username, password } = req.body;
+        
+        if (!officeName || !username || !password) {
+            return res.status(400).json({ success: false, message: "جميع الخانات مطلوبة" });
+        }
+
+        const newDocRef = await db.collection("users").add({
+            officeName: officeName,
+            username: username,
+            password: password,
+            role: "office"
+        });
+
+        res.json({ success: true, message: "تمت إضافة حساب المكتب الجديد بنجاح", id: newDocRef.id });
+    } catch (err) {
+        console.error("Error adding office account:", err);
+        res.status(500).json({ success: false, message: "خطأ داخلي بالسيرفر أثناء الحفظ" });
+    }
+});
+
+// =======================================================
+// 🗑 حذف وإزالة مكتب تحصين نهائياً من قاعدة البيانات
+// =======================================================
+app.post("/delete-office-account", async (req, res) => {
+    try {
+        const { officeId } = req.body;
+        if (!officeId) {
+            return res.status(400).json({ success: false, message: "معرف المكتب مطلوب للحذف" });
+        }
+
+        await db.collection("users").doc(officeId).delete();
+        res.json({ success: true, message: "تم حذف حساب المكتب نهائياً من قاعدة البيانات" });
+    } catch (err) {
+        console.error("Error deleting office account:", err);
+        res.status(500).json({ success: false, message: "حدث خطأ بالسيرفر أثناء معالجة الحذف" });
+    }
+});
+
+// =======================================================
+// 🔐 تحديث كلمة سر حساب الأدمن الرئيسي
+// =======================================================
+app.post("/update-admin-password", async (req, res) => {
+    try {
+        const { username, newPassword } = req.body;
+
+        if (!username || !newPassword) {
+            return res.status(400).json({ success: false, message: "البيانات المطلوبة ناقصة" });
+        }
+
+        const snapshot = await db.collection("users")
+            .where("username", "==", username)
+            .where("role", "==", "admin")
+            .get();
+
+        if (snapshot.empty) {
+            return res.status(444).json({ success: false, message: "حساب الأدمن غير موجود أو غير مصرح له" });
+        }
+
+        const adminDocId = snapshot.docs[0].id;
+        await db.collection("users").doc(adminDocId).update({
+            password: newPassword
+        });
+
+        res.json({ success: true, message: "تم تحديث كلمة مرور الأدمن بنجاح" });
+    } catch (err) {
+        console.error("Error updating admin password:", err);
+        res.status(500).json({ success: false, message: "حدث خطأ داخلي بالسيرفر أثناء تحديث كلمة السر" });
+    }
+});
+
+// =======================================================
+// 📊 [مطور بالكامل] جلب الإحصائيات المجمعة للداشبورد والترتيب والتأكد من مسميات الحقول
+// =======================================================
+// استبدل جزء التجميع في server.js بهذا الكود الدقيق:
+app.get("/get-dashboard-stats", async (req, res) => {
+    try {
+        const { from, to } = req.query;
+        // استعلام من Firebase بناءً على التاريخ
+        const snapshot = await db.collection("daily_reports")
+            .where("date", ">=", from)
+            .where("date", "<=", to)
+            .get();
+
+        let stats = {
+            totalVisitors: 0,
+            vaccineUsage: {
+                yellow: 0, cholera: 0, solk: 0, pasteur: 0, 
+                pfizer: 0, dual: 0, flu: 0, hep: 0
+            }
+        };
+
+        snapshot.forEach(doc => {
+            const r = doc.data();
+            stats.totalVisitors += Number(r.totalVisitors || 0);
+            
+            // التجميع الدقيق لكل نوع
+            stats.vaccineUsage.yellow += Number(r.yellowUsed || 0);
+            stats.vaccineUsage.cholera += Number(r.choleraUsed || 0);
+            stats.vaccineUsage.solk += Number(r.solkUsed || 0);
+            stats.vaccineUsage.pasteur += (Number(r.pasteurHajj || 0) + Number(r.pasteurForeign || 0) + Number(r.pasteurOmrah || 0));
+            stats.vaccineUsage.pfizer += (Number(r.pfizerHajj || 0) + Number(r.pfizerForeign || 0) + Number(r.pfizerOmrah || 0));
+            stats.vaccineUsage.dual += Number(r.dualUsed || 0);
+            stats.vaccineUsage.flu += Number(r.fluUsed || 0);
+            stats.vaccineUsage.hep += Number(r.hepUsed || 0);
+        });
+
+        res.json({ success: true, stats });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// =======================================================
+// 🚀 تشغيل الخادم والإنصات للمنافذ
+// =======================================================
+const PORT = process.env.PORT || 5000;
+// أضف '0.0.0.0' هنا:
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`⚡ Cairo Quarantine Backend is running securely on port ${PORT}`);
+});
