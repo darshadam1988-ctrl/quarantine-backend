@@ -14,176 +14,128 @@ const PORT = process.env.PORT || 3000;
    HELPERS
 ========================================================= */
 
-function safeNumber(v) {
+function num(v) {
     return Number(v) || 0;
 }
 
 function calculateReport(report) {
 
-    // =========================
     // YELLOW
-    // =========================
-
     const yellowUsed =
-        safeNumber(report.yellowEgyptians) +
-        safeNumber(report.yellowForeigners);
+        num(report.yellowEgyptians) +
+        num(report.yellowForeigners);
 
     report.yellowRemaining =
-        safeNumber(report.yellowBalance) +
-        safeNumber(report.yellowIncoming) -
+        num(report.yellowBalance) +
+        num(report.yellowIncoming) -
         yellowUsed;
 
-    // =========================
     // CHOLERA
-    // =========================
-
     const choleraUsed =
-        safeNumber(report.choleraDose1) +
-        safeNumber(report.choleraDose2);
+        num(report.choleraDose1) +
+        num(report.choleraDose2);
 
     report.choleraRemaining =
-        safeNumber(report.choleraBalance) +
-        safeNumber(report.choleraIncoming) -
+        num(report.choleraBalance) +
+        num(report.choleraIncoming) -
         choleraUsed;
 
-    // =========================
     // SOLK
-    // =========================
-
     report.solkRemaining =
-        safeNumber(report.solkBalance) +
-        safeNumber(report.solkIncoming) -
-        safeNumber(report.solkUsed);
+        num(report.solkBalance) +
+        num(report.solkIncoming) -
+        num(report.solkUsed);
 
-    // =========================
     // PASTEUR
-    // =========================
-
     const pasteurUsed =
-        safeNumber(report.pasteurHajj) +
-        safeNumber(report.pasteurForeignHajj) +
-        safeNumber(report.pasteurOmrah) +
-        safeNumber(report.pasteurTravelers);
+        num(report.pasteurHajj) +
+        num(report.pasteurForeignHajj) +
+        num(report.pasteurOmrah) +
+        num(report.pasteurTravelers);
 
     report.pasteurRemaining =
-        safeNumber(report.pasteurBalance) +
-        safeNumber(report.pasteurIncoming) -
+        num(report.pasteurBalance) +
+        num(report.pasteurIncoming) -
         pasteurUsed;
 
-    // =========================
     // PFIZER
-    // =========================
-
     const pfizerUsed =
-        safeNumber(report.pfizerHajj) +
-        safeNumber(report.pfizerForeignHajj) +
-        safeNumber(report.pfizerOmrah) +
-        safeNumber(report.pfizerTravelers);
+        num(report.pfizerHajj) +
+        num(report.pfizerForeignHajj) +
+        num(report.pfizerOmrah) +
+        num(report.pfizerTravelers);
 
     report.pfizerRemaining =
-        safeNumber(report.pfizerBalance) +
-        safeNumber(report.pfizerIncoming) -
+        num(report.pfizerBalance) +
+        num(report.pfizerIncoming) -
         pfizerUsed;
 
-    // =========================
     // DUAL
-    // =========================
-
     report.dualRemaining =
-        safeNumber(report.dualBalance) +
-        safeNumber(report.dualIncoming) -
-        safeNumber(report.dualUsed);
+        num(report.dualBalance) +
+        num(report.dualIncoming) -
+        num(report.dualUsed);
 
-    // =========================
     // FLU
-    // =========================
-
     const fluUsed =
-        safeNumber(report.fluHajj) +
-        safeNumber(report.fluTravelers) +
-        safeNumber(report.fluCitizens);
+        num(report.fluHajj) +
+        num(report.fluTravelers) +
+        num(report.fluCitizens);
 
     report.fluRemaining =
-        safeNumber(report.fluBalance) +
-        safeNumber(report.fluIncoming) -
+        num(report.fluBalance) +
+        num(report.fluIncoming) -
         fluUsed;
 
-    // =========================
     // HEP
-    // =========================
-
     const hepUsed =
-        safeNumber(report.hepEgyptians) +
-        safeNumber(report.hepForeigners);
+        num(report.hepEgyptians) +
+        num(report.hepForeigners);
 
     report.hepRemaining =
-        safeNumber(report.hepBalance) +
-        safeNumber(report.hepIncoming) -
+        num(report.hepBalance) +
+        num(report.hepIncoming) -
         hepUsed;
 
     return report;
 }
 
-function applyPreviousBalances(report, previousReport) {
-
-    if (!previousReport) return report;
-
-    report.yellowBalance =
-        safeNumber(previousReport.yellowRemaining);
-
-    report.choleraBalance =
-        safeNumber(previousReport.choleraRemaining);
-
-    report.solkBalance =
-        safeNumber(previousReport.solkRemaining);
-
-    report.pasteurBalance =
-        safeNumber(previousReport.pasteurRemaining);
-
-    report.pfizerBalance =
-        safeNumber(previousReport.pfizerRemaining);
-
-    report.dualBalance =
-        safeNumber(previousReport.dualRemaining);
-
-    report.fluBalance =
-        safeNumber(previousReport.fluRemaining);
-
-    report.hepBalance =
-        safeNumber(previousReport.hepRemaining);
-
-    return report;
-}
-
 /* =========================================================
-   GET LAST REPORT BEFORE PERIOD
+   GET PREVIOUS REPORT
 ========================================================= */
 
-async function getPreviousReport(officeCode, currentDateFrom) {
+async function getPreviousReport(
+    officeCode,
+    currentDateFrom
+) {
 
     const snapshot = await db
         .collection("reports")
         .where("officeCode", "==", officeCode)
-        .where("dateTo", "<", currentDateFrom)
         .orderBy("dateTo", "desc")
-        .limit(1)
         .get();
 
     if (snapshot.empty) {
         return null;
     }
 
-    return {
-        id: snapshot.docs[0].id,
-        ...snapshot.docs[0].data()
-    };
+    const reports = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+    }));
+
+    const previous = reports.find(r =>
+        r.dateTo < currentDateFrom
+    );
+
+    return previous || null;
 }
 
 /* =========================================================
-   RECALCULATE CHAIN
+   RECALCULATE REPORTS
 ========================================================= */
 
-async function recalculateFutureReports(officeCode) {
+async function recalculateReports(officeCode) {
 
     const snapshot = await db
         .collection("reports")
@@ -202,68 +154,93 @@ async function recalculateFutureReports(officeCode) {
             ...doc.data()
         };
 
-        // APPLY PREVIOUS BALANCES
+        // APPLY PREVIOUS REMAINING
         if (previous) {
 
             report.yellowBalance =
-                safeNumber(previous.yellowRemaining);
+                num(previous.yellowRemaining);
 
             report.choleraBalance =
-                safeNumber(previous.choleraRemaining);
+                num(previous.choleraRemaining);
 
             report.solkBalance =
-                safeNumber(previous.solkRemaining);
+                num(previous.solkRemaining);
 
             report.pasteurBalance =
-                safeNumber(previous.pasteurRemaining);
+                num(previous.pasteurRemaining);
 
             report.pfizerBalance =
-                safeNumber(previous.pfizerRemaining);
+                num(previous.pfizerRemaining);
 
             report.dualBalance =
-                safeNumber(previous.dualRemaining);
+                num(previous.dualRemaining);
 
             report.fluBalance =
-                safeNumber(previous.fluRemaining);
+                num(previous.fluRemaining);
 
             report.hepBalance =
-                safeNumber(previous.hepRemaining);
+                num(previous.hepRemaining);
         }
 
         // RECALCULATE
         report = calculateReport(report);
 
-        // UPDATE FIRESTORE
+        // UPDATE REPORT
         await db
             .collection("reports")
             .doc(doc.id)
             .update({
 
-                yellowBalance: report.yellowBalance,
-                yellowRemaining: report.yellowRemaining,
+                yellowBalance:
+                    report.yellowBalance,
 
-                choleraBalance: report.choleraBalance,
-                choleraRemaining: report.choleraRemaining,
+                yellowRemaining:
+                    report.yellowRemaining,
 
-                solkBalance: report.solkBalance,
-                solkRemaining: report.solkRemaining,
+                choleraBalance:
+                    report.choleraBalance,
 
-                pasteurBalance: report.pasteurBalance,
-                pasteurRemaining: report.pasteurRemaining,
+                choleraRemaining:
+                    report.choleraRemaining,
 
-                pfizerBalance: report.pfizerBalance,
-                pfizerRemaining: report.pfizerRemaining,
+                solkBalance:
+                    report.solkBalance,
 
-                dualBalance: report.dualBalance,
-                dualRemaining: report.dualRemaining,
+                solkRemaining:
+                    report.solkRemaining,
 
-                fluBalance: report.fluBalance,
-                fluRemaining: report.fluRemaining,
+                pasteurBalance:
+                    report.pasteurBalance,
 
-                hepBalance: report.hepBalance,
-                hepRemaining: report.hepRemaining,
+                pasteurRemaining:
+                    report.pasteurRemaining,
 
-                recalculatedAt: new Date()
+                pfizerBalance:
+                    report.pfizerBalance,
+
+                pfizerRemaining:
+                    report.pfizerRemaining,
+
+                dualBalance:
+                    report.dualBalance,
+
+                dualRemaining:
+                    report.dualRemaining,
+
+                fluBalance:
+                    report.fluBalance,
+
+                fluRemaining:
+                    report.fluRemaining,
+
+                hepBalance:
+                    report.hepBalance,
+
+                hepRemaining:
+                    report.hepRemaining,
+
+                recalculatedAt:
+                    new Date()
             });
 
         previous = report;
@@ -280,7 +257,7 @@ app.post("/save-report", async (req, res) => {
 
         const report = req.body;
 
-        // VALIDATION
+        // VALIDATE NEGATIVE INCOMING
         const invalidIncoming = [
 
             "yellowIncoming",
@@ -292,9 +269,10 @@ app.post("/save-report", async (req, res) => {
             "fluIncoming",
             "hepIncoming"
 
-        ].some(field => safeNumber(report[field]) < 0);
+        ].some(field => num(report[field]) < 0);
 
         if (invalidIncoming) {
+
             return res.status(400).json({
                 success: false,
                 message: "الوارد لا يمكن أن يكون بالسالب"
@@ -311,30 +289,52 @@ app.post("/save-report", async (req, res) => {
             .get();
 
         // GET PREVIOUS REPORT
-        const previousReport =
+        const previous =
             await getPreviousReport(
                 report.officeCode,
                 report.dateFrom
             );
 
-        // APPLY BALANCES
-        applyPreviousBalances(report, previousReport);
+        // APPLY PREVIOUS BALANCES
+        if (previous) {
+
+            report.yellowBalance =
+                num(previous.yellowRemaining);
+
+            report.choleraBalance =
+                num(previous.choleraRemaining);
+
+            report.solkBalance =
+                num(previous.solkRemaining);
+
+            report.pasteurBalance =
+                num(previous.pasteurRemaining);
+
+            report.pfizerBalance =
+                num(previous.pfizerRemaining);
+
+            report.dualBalance =
+                num(previous.dualRemaining);
+
+            report.fluBalance =
+                num(previous.fluRemaining);
+
+            report.hepBalance =
+                num(previous.hepRemaining);
+        }
 
         // CALCULATE
         calculateReport(report);
 
-        report.createdAt = new Date();
         report.updatedAt = new Date();
-
-        // =========================
-        // UPDATE EXISTING
-        // =========================
 
         let reportId = null;
 
+        // UPDATE EXISTING REPORT
         if (!existingSnapshot.empty) {
 
-            reportId = existingSnapshot.docs[0].id;
+            reportId =
+                existingSnapshot.docs[0].id;
 
             await db
                 .collection("reports")
@@ -342,6 +342,8 @@ app.post("/save-report", async (req, res) => {
                 .update(report);
 
         } else {
+
+            report.createdAt = new Date();
 
             const saved =
                 await db
@@ -351,11 +353,10 @@ app.post("/save-report", async (req, res) => {
             reportId = saved.id;
         }
 
-        // =========================
-        // RECALCULATE FUTURE REPORTS
-        // =========================
-
-        await recalculateFutureReports(report.officeCode);
+        // RECALCULATE ALL FUTURE REPORTS
+        await recalculateReports(
+            report.officeCode
+        );
 
         return res.json({
             success: true,
@@ -368,7 +369,7 @@ app.post("/save-report", async (req, res) => {
 
         return res.status(500).json({
             success: false,
-            message: "Server Error"
+            message: err.message
         });
     }
 });
@@ -430,9 +431,10 @@ app.get("/get-balances/:officeCode", async (req, res) => {
 
     try {
 
-        const officeCode = req.params.officeCode;
+        const officeCode =
+            req.params.officeCode;
 
-        // GET LAST REPORT
+        // LAST REPORT
         const snapshot = await db
             .collection("reports")
             .where("officeCode", "==", officeCode)
@@ -440,7 +442,7 @@ app.get("/get-balances/:officeCode", async (req, res) => {
             .limit(1)
             .get();
 
-        // IF NO REPORTS
+        // NO REPORTS YET
         if (snapshot.empty) {
 
             const openingDoc = await db
@@ -458,39 +460,43 @@ app.get("/get-balances/:officeCode", async (req, res) => {
 
             return res.json({
                 success: true,
-                balances: openingDoc.data()
+                balances:
+                    openingDoc.data()
             });
         }
 
-        const lastReport = snapshot.docs[0].data();
+        const lastReport =
+            snapshot.docs[0].data();
 
         return res.json({
+
             success: true,
+
             balances: {
 
                 yellowBalance:
-                    safeNumber(lastReport.yellowRemaining),
+                    num(lastReport.yellowRemaining),
 
                 choleraBalance:
-                    safeNumber(lastReport.choleraRemaining),
+                    num(lastReport.choleraRemaining),
 
                 solkBalance:
-                    safeNumber(lastReport.solkRemaining),
+                    num(lastReport.solkRemaining),
 
                 pasteurBalance:
-                    safeNumber(lastReport.pasteurRemaining),
+                    num(lastReport.pasteurRemaining),
 
                 pfizerBalance:
-                    safeNumber(lastReport.pfizerRemaining),
+                    num(lastReport.pfizerRemaining),
 
                 dualBalance:
-                    safeNumber(lastReport.dualRemaining),
+                    num(lastReport.dualRemaining),
 
                 fluBalance:
-                    safeNumber(lastReport.fluRemaining),
+                    num(lastReport.fluRemaining),
 
                 hepBalance:
-                    safeNumber(lastReport.hepRemaining)
+                    num(lastReport.hepRemaining)
             }
         });
 
@@ -512,11 +518,10 @@ app.get("/get-all-reports", async (req, res) => {
 
     try {
 
-        const snapshot =
-            await db
-                .collection("reports")
-                .orderBy("createdAt", "desc")
-                .get();
+        const snapshot = await db
+            .collection("reports")
+            .orderBy("createdAt", "desc")
+            .get();
 
         const reports = snapshot.docs.map(doc => ({
             id: doc.id,
@@ -543,14 +548,17 @@ app.get("/get-all-reports", async (req, res) => {
 ========================================================= */
 
 app.get("/", (req, res) => {
+
     res.send("Server Running...");
 });
 
 /* =========================================================
-   START
+   START SERVER
 ========================================================= */
 
 app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+
+    console.log("Server running on port " + PORT);
+
 });
 ```
