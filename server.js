@@ -579,7 +579,61 @@ app.get("/audit-logs/:officeCode", async (req, res) => {
         });
     }
 });
+// ======================================================
+// 🔐 LOGIN
+// ======================================================
 
+app.post("/login", async (req, res) => {
+
+    try {
+
+        const { username, password } = req.body;
+
+        if (!username || !password) {
+
+            return res.status(400).json({
+                success: false,
+                message: "Username and password required"
+            });
+        }
+
+        const snap = await db
+            .collection("users")
+            .where("username", "==", username)
+            .where("password", "==", password)
+            .limit(1)
+            .get();
+
+        if (snap.empty) {
+
+            return res.status(401).json({
+                success: false,
+                message: "بيانات الدخول غير صحيحة"
+            });
+        }
+
+        const userDoc = snap.docs[0];
+
+        const user = {
+            id: userDoc.id,
+            ...userDoc.data()
+        };
+
+        res.json({
+            success: true,
+            user
+        });
+
+    } catch (err) {
+
+        console.error(err);
+
+        res.status(500).json({
+            success: false,
+            error: err.message
+        });
+    }
+});
 // ======================================================
 // 🚀 START SERVER
 // ======================================================
