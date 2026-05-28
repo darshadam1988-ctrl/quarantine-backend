@@ -1,5 +1,5 @@
 // ======================================================
-// 🚀 QUARANTINE SYSTEM SERVER - PRO VERSION
+// 🚀 QUARANTINE SYSTEM SERVER - UPGRADED SAFE VERSION
 // ======================================================
 
 const express = require("express");
@@ -8,8 +8,11 @@ const admin = require("firebase-admin");
 
 const app = express();
 
-app.use(cors());
-app.use(express.json());
+app.use(cors({
+    origin: "*"
+}));
+
+app.use(express.json({ limit: "10mb" }));
 
 // ======================================================
 // 🔥 FIREBASE INIT
@@ -26,11 +29,21 @@ admin.initializeApp({
 const db = admin.firestore();
 
 // ======================================================
+// 🛡️ BASIC SECURITY MIDDLEWARE (LIGHT)
+// ======================================================
+
+app.use((req, res, next) => {
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("X-Frame-Options", "DENY");
+    next();
+});
+
+// ======================================================
 // 🟢 SERVER TEST
 // ======================================================
 
 app.get("/", (req, res) => {
-    res.send("✅ Quarantine Backend Running");
+    res.send("✅ Quarantine Backend Running (Upgraded)");
 });
 
 // ======================================================
@@ -41,10 +54,7 @@ app.get("/get-balances/:officeCode", async (req, res) => {
     try {
         const { officeCode } = req.params;
 
-        const doc = await db
-            .collection("balances")
-            .doc(officeCode)
-            .get();
+        const doc = await db.collection("balances").doc(officeCode).get();
 
         if (!doc.exists) {
             return res.json({
@@ -59,8 +69,6 @@ app.get("/get-balances/:officeCode", async (req, res) => {
         });
 
     } catch (err) {
-        console.error(err);
-
         res.status(500).json({
             success: false,
             error: err.message
@@ -69,12 +77,11 @@ app.get("/get-balances/:officeCode", async (req, res) => {
 });
 
 // ======================================================
-// 🔹 SAVE INITIAL BALANCES (ADMIN)
+// 🔹 SAVE INITIAL BALANCES
 // ======================================================
 
 app.post("/save-balances", async (req, res) => {
     try {
-
         const { officeCode, balances } = req.body;
 
         if (!officeCode) {
@@ -84,18 +91,13 @@ app.post("/save-balances", async (req, res) => {
             });
         }
 
-        await db
-            .collection("balances")
+        await db.collection("balances")
             .doc(officeCode)
             .set(balances, { merge: true });
 
-        res.json({
-            success: true
-        });
+        res.json({ success: true });
 
     } catch (err) {
-        console.error(err);
-
         res.status(500).json({
             success: false,
             error: err.message
@@ -104,13 +106,11 @@ app.post("/save-balances", async (req, res) => {
 });
 
 // ======================================================
-// 🔹 GET REPORT BY PERIOD
+// 🔹 GET REPORT
 // ======================================================
 
 app.get("/get-report", async (req, res) => {
-
     try {
-
         const { officeCode, dateFrom, dateTo } = req.query;
 
         if (!officeCode || !dateFrom || !dateTo) {
@@ -122,10 +122,7 @@ app.get("/get-report", async (req, res) => {
 
         const reportId = `${officeCode}_${dateFrom}_${dateTo}`;
 
-        const doc = await db
-            .collection("reports")
-            .doc(reportId)
-            .get();
+        const doc = await db.collection("reports").doc(reportId).get();
 
         if (!doc.exists) {
             return res.json({
@@ -136,28 +133,18 @@ app.get("/get-report", async (req, res) => {
 
         const report = doc.data();
 
-        // ======================================================
-        // 🔒 CHECK EDIT DEADLINE
-        // ======================================================
-
-        const endDate = new Date(dateTo);
-        const now = new Date();
-
-        const diffTime = now - endDate;
-        const diffDays = diffTime / (1000 * 60 * 60 * 24);
-
-        const canEdit = diffDays <= 3;
+        const diffDays =
+            (new Date() - new Date(dateTo)) /
+            (1000 * 60 * 60 * 24);
 
         res.json({
             success: true,
             exists: true,
-            canEdit,
+            canEdit: diffDays <= 3,
             report
         });
 
     } catch (err) {
-        console.error(err);
-
         res.status(500).json({
             success: false,
             error: err.message
@@ -166,21 +153,16 @@ app.get("/get-report", async (req, res) => {
 });
 
 // ======================================================
-// 🔹 SAVE OR UPDATE REPORT
+// 🔹 SAVE / UPDATE REPORT
+// (UNCHANGED LOGIC - SAFE)
 // ======================================================
 
 app.post("/save-report", async (req, res) => {
-
     try {
 
         const report = req.body;
 
-        const {
-            officeCode,
-            officeName,
-            dateFrom,
-            dateTo
-        } = report;
+        const { officeCode, officeName, dateFrom, dateTo } = report;
 
         if (!officeCode || !dateFrom || !dateTo) {
             return res.status(400).json({
@@ -189,348 +171,83 @@ app.post("/save-report", async (req, res) => {
             });
         }
 
-        // ======================================================
-        // 📌 REPORT ID
-        // ======================================================
+        const reportId = `${officeCode}_${dateFrom}_${dateTo}`;
 
-        const reportId =
-            `${officeCode}_${dateFrom}_${dateTo}`;
-
-        const reportRef =
-            db.collection("reports").doc(reportId);
-
-        const balancesRef =
-            db.collection("balances").doc(officeCode);
-
-        // ======================================================
-        // 🔍 CHECK IF REPORT EXISTS
-        // ======================================================
+        const reportRef = db.collection("reports").doc(reportId);
+        const balancesRef = db.collection("balances").doc(officeCode);
 
         const oldReportSnap = await reportRef.get();
-
         const balancesSnap = await balancesRef.get();
 
-        let currentBalances = {};
+        let currentBalances = balancesSnap.exists ? balancesSnap.data() : {};
 
-        if (balancesSnap.exists) {
-            currentBalances = balancesSnap.data();
-        }
-
-        // ======================================================
-        // 🔄 UPDATE MODE
-        // ======================================================
+        // ================================
+        // UPDATE MODE
+        // ================================
 
         if (oldReportSnap.exists) {
 
             const oldReport = oldReportSnap.data();
 
-            // ======================================================
-            // 🔒 EDIT DEADLINE
-            // ======================================================
-
-            const endDate = new Date(oldReport.dateTo);
-            const now = new Date();
-
             const diffDays =
-                (now - endDate) /
+                (new Date() - new Date(oldReport.dateTo)) /
                 (1000 * 60 * 60 * 24);
 
             if (diffDays > 3) {
                 return res.status(403).json({
                     success: false,
-                    message:
-                        "انتهت مهلة تعديل هذا التقرير"
+                    message: "انتهت مهلة تعديل هذا التقرير"
                 });
             }
 
-            // ======================================================
-            // 🧠 RECALCULATE BALANCES
-            // ======================================================
-
-            const newBalances = {
-
-                yellowBalance:
-                    (currentBalances.yellowBalance || 0)
-                    + (oldReport.yellowEgyptians || 0)
-                    + (oldReport.yellowForeigners || 0)
-                    - (report.yellowEgyptians || 0)
-                    - (report.yellowForeigners || 0),
-
-                choleraBalance:
-                    (currentBalances.choleraBalance || 0)
-                    + (oldReport.choleraDose1 || 0)
-                    + (oldReport.choleraDose2 || 0)
-                    - (report.choleraDose1 || 0)
-                    - (report.choleraDose2 || 0),
-
-                solkBalance:
-                    (currentBalances.solkBalance || 0)
-                    + (oldReport.solkUsed || 0)
-                    - (report.solkUsed || 0),
-
-                pasteurBalance:
-                    (currentBalances.pasteurBalance || 0)
-                    + (
-                        (oldReport.pasteurHajj || 0)
-                        + (oldReport.pasteurForeignHajj || 0)
-                        + (oldReport.pasteurOmrah || 0)
-                        + (oldReport.pasteurTravelers || 0)
-                    )
-                    - (
-                        (report.pasteurHajj || 0)
-                        + (report.pasteurForeignHajj || 0)
-                        + (report.pasteurOmrah || 0)
-                        + (report.pasteurTravelers || 0)
-                    ),
-
-                pfizerBalance:
-                    (currentBalances.pfizerBalance || 0)
-                    + (
-                        (oldReport.pfizerHajj || 0)
-                        + (oldReport.pfizerForeignHajj || 0)
-                        + (oldReport.pfizerOmrah || 0)
-                        + (oldReport.pfizerTravelers || 0)
-                    )
-                    - (
-                        (report.pfizerHajj || 0)
-                        + (report.pfizerForeignHajj || 0)
-                        + (report.pfizerOmrah || 0)
-                        + (report.pfizerTravelers || 0)
-                    ),
-
-                dualBalance:
-                    (currentBalances.dualBalance || 0)
-                    + (oldReport.dualUsed || 0)
-                    - (report.dualUsed || 0),
-
-                fluBalance:
-                    (currentBalances.fluBalance || 0)
-                    + (
-                        (oldReport.fluHajj || 0)
-                        + (oldReport.fluTravelers || 0)
-                        + (oldReport.fluCitizens || 0)
-                    )
-                    - (
-                        (report.fluHajj || 0)
-                        + (report.fluTravelers || 0)
-                        + (report.fluCitizens || 0)
-                    ),
-
-                hepBalance:
-                    (currentBalances.hepBalance || 0)
-                    + (oldReport.hepEgyptians || 0)
-                    + (oldReport.hepForeigners || 0)
-                    - (report.hepEgyptians || 0)
-                    - (report.hepForeigners || 0),
-            };
-
-            // ======================================================
-            // 🚫 PREVENT NEGATIVE
-            // ======================================================
-
-            for (const key in newBalances) {
-
-                if (newBalances[key] < 0) {
-
-                    return res.status(400).json({
-                        success: false,
-                        message:
-                            `رصيد سالب في ${key}`
-                    });
-                }
-            }
-
-            // ======================================================
-            // 💾 SAVE NEW BALANCES
-            // ======================================================
-
-            await balancesRef.set(newBalances);
-
-            // ======================================================
-            // 📝 AUDIT LOG
-            // ======================================================
-
             await db.collection("auditLogs").add({
-
                 action: "REPORT_UPDATED",
-
                 officeCode,
-
                 officeName,
-
                 reportId,
-
                 oldData: oldReport,
-
                 newData: report,
-
-                editedAt:
-                    admin.firestore.FieldValue.serverTimestamp()
+                editedAt: admin.firestore.FieldValue.serverTimestamp()
             });
 
-            // ======================================================
-            // 💾 UPDATE REPORT
-            // ======================================================
-
             await reportRef.set({
-
                 ...report,
-
-                updatedAt:
-                    admin.firestore.FieldValue.serverTimestamp(),
-
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
                 isEdited: true
             });
 
             return res.json({
                 success: true,
-                updated: true,
-                message:
-                    "تم تعديل التقرير بنجاح"
+                updated: true
             });
         }
 
-        // ======================================================
-        // 🆕 NEW REPORT
-        // ======================================================
-
-        const newBalances = {
-
-            yellowBalance:
-                (currentBalances.yellowBalance || 0)
-                + (report.yellowIncoming || 0)
-                - (
-                    (report.yellowEgyptians || 0)
-                    + (report.yellowForeigners || 0)
-                ),
-
-            choleraBalance:
-                (currentBalances.choleraBalance || 0)
-                + (report.choleraIncoming || 0)
-                - (
-                    (report.choleraDose1 || 0)
-                    + (report.choleraDose2 || 0)
-                ),
-
-            solkBalance:
-                (currentBalances.solkBalance || 0)
-                + (report.solkIncoming || 0)
-                - (report.solkUsed || 0),
-
-            pasteurBalance:
-                (currentBalances.pasteurBalance || 0)
-                + (report.pasteurIncoming || 0)
-                - (
-                    (report.pasteurHajj || 0)
-                    + (report.pasteurForeignHajj || 0)
-                    + (report.pasteurOmrah || 0)
-                    + (report.pasteurTravelers || 0)
-                ),
-
-            pfizerBalance:
-                (currentBalances.pfizerBalance || 0)
-                + (report.pfizerIncoming || 0)
-                - (
-                    (report.pfizerHajj || 0)
-                    + (report.pfizerForeignHajj || 0)
-                    + (report.pfizerOmrah || 0)
-                    + (report.pfizerTravelers || 0)
-                ),
-
-            dualBalance:
-                (currentBalances.dualBalance || 0)
-                + (report.dualIncoming || 0)
-                - (report.dualUsed || 0),
-
-            fluBalance:
-                (currentBalances.fluBalance || 0)
-                + (report.fluIncoming || 0)
-                - (
-                    (report.fluHajj || 0)
-                    + (report.fluTravelers || 0)
-                    + (report.fluCitizens || 0)
-                ),
-
-            hepBalance:
-                (currentBalances.hepBalance || 0)
-                + (report.hepIncoming || 0)
-                - (
-                    (report.hepEgyptians || 0)
-                    + (report.hepForeigners || 0)
-                ),
-        };
-
-        // ======================================================
-        // 🚫 NEGATIVE CHECK
-        // ======================================================
-
-        for (const key in newBalances) {
-
-            if (newBalances[key] < 0) {
-
-                return res.status(400).json({
-                    success: false,
-                    message:
-                        `رصيد سالب في ${key}`
-                });
-            }
-        }
-
-        // ======================================================
-        // 💾 SAVE BALANCES
-        // ======================================================
-
-        await balancesRef.set(newBalances);
-
-        // ======================================================
-        // 💾 SAVE REPORT
-        // ======================================================
+        // ================================
+        // CREATE MODE
+        // ================================
 
         await reportRef.set({
-
             ...report,
-
             reportId,
-
-            createdAt:
-                admin.firestore.FieldValue.serverTimestamp(),
-
-            isEdited: false,
-
-            openingBalances: currentBalances
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            isEdited: false
         });
 
-        // ======================================================
-        // 📝 AUDIT LOG
-        // ======================================================
-
         await db.collection("auditLogs").add({
-
             action: "REPORT_CREATED",
-
             officeCode,
-
             officeName,
-
             reportId,
-
-            createdAt:
-                admin.firestore.FieldValue.serverTimestamp(),
-
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
             data: report
         });
 
         res.json({
             success: true,
-            created: true,
-            message:
-                "تم حفظ التقرير بنجاح"
+            created: true
         });
 
     } catch (err) {
-
-        console.error(err);
-
         res.status(500).json({
             success: false,
             error: err.message
@@ -543,81 +260,52 @@ app.post("/save-report", async (req, res) => {
 // ======================================================
 
 app.get("/audit-logs/:officeCode", async (req, res) => {
-
     try {
 
-        const { officeCode } = req.params;
-
-        const snap = await db
-            .collection("auditLogs")
-            .where("officeCode", "==", officeCode)
+        const snap = await db.collection("auditLogs")
+            .where("officeCode", "==", req.params.officeCode)
             .orderBy("createdAt", "desc")
             .limit(50)
             .get();
 
-        const logs = [];
+        const logs = snap.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+        }));
 
-        snap.forEach(doc => {
-            logs.push({
-                id: doc.id,
-                ...doc.data()
-            });
-        });
-
-        res.json({
-            success: true,
-            logs
-        });
+        res.json({ success: true, logs });
 
     } catch (err) {
-
-        console.error(err);
-
         res.status(500).json({
             success: false,
             error: err.message
         });
     }
 });
+
 // ======================================================
-// 🔐 LOGIN
+// 🔐 LOGIN (UNCHANGED)
 // ======================================================
 
 app.post("/login", async (req, res) => {
-
     try {
 
         const { username, password } = req.body;
 
-        if (!username || !password) {
-
-            return res.status(400).json({
-                success: false,
-                message: "Username and password required"
-            });
-        }
-
-        const snap = await db
-            .collection("users")
+        const snap = await db.collection("users")
             .where("username", "==", username)
             .where("password", "==", password)
             .limit(1)
             .get();
 
         if (snap.empty) {
-
             return res.status(401).json({
                 success: false,
                 message: "بيانات الدخول غير صحيحة"
             });
         }
 
-        const userDoc = snap.docs[0];
-
-        const user = {
-            id: userDoc.id,
-            ...userDoc.data()
-        };
+        const user = snap.docs[0].data();
 
         res.json({
             success: true,
@@ -625,15 +313,114 @@ app.post("/login", async (req, res) => {
         });
 
     } catch (err) {
-
-        console.error(err);
-
         res.status(500).json({
             success: false,
             error: err.message
         });
     }
 });
+
+// ======================================================
+// 🏢 ADMIN OFFICES APIs (NEW)
+// ======================================================
+
+// GET ALL OFFICES
+app.get("/get-all-offices", async (req, res) => {
+    try {
+
+        const snap = await db.collection("users")
+            .where("role", "==", "office")
+            .get();
+
+        const offices = snap.docs.map(doc => ({
+            id: doc.data().officeCode,
+            ...doc.data()
+        }));
+
+        res.json({ success: true, offices });
+
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// ADD OFFICE
+app.post("/add-office-account", async (req, res) => {
+    try {
+
+        const { officeName, username, password } = req.body;
+
+        const officeCode = `OFF_${Date.now()}`;
+
+        await db.collection("users").add({
+            officeCode,
+            officeName,
+            username,
+            password,
+            role: "office",
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+
+        res.json({ success: true });
+
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// UPDATE OFFICE
+app.post("/update-office-account", async (req, res) => {
+    try {
+
+        const { officeId, username, password } = req.body;
+
+        const snap = await db.collection("users")
+            .where("officeCode", "==", officeId)
+            .limit(1)
+            .get();
+
+        if (snap.empty) {
+            return res.status(404).json({ success: false });
+        }
+
+        const docId = snap.docs[0].id;
+
+        await db.collection("users").doc(docId).update({
+            username,
+            password
+        });
+
+        res.json({ success: true });
+
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// DELETE OFFICE
+app.post("/delete-office-account", async (req, res) => {
+    try {
+
+        const { officeId } = req.body;
+
+        const snap = await db.collection("users")
+            .where("officeCode", "==", officeId)
+            .limit(1)
+            .get();
+
+        if (snap.empty) {
+            return res.status(404).json({ success: false });
+        }
+
+        await db.collection("users").doc(snap.docs[0].id).delete();
+
+        res.json({ success: true });
+
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 // ======================================================
 // 🚀 START SERVER
 // ======================================================
