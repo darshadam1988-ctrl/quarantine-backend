@@ -109,6 +109,132 @@ app.post("/save-balances", async (req, res) => {
 // 🔹 GET REPORT
 // ======================================================
 
+// ======================================================
+// 📊 DASHBOARD STATS API
+// ======================================================
+
+app.get("/get-dashboard-stats", async (req, res) => {
+    try {
+        const { from, to } = req.query;
+
+        if (!from || !to) {
+            return res.status(400).json({
+                success: false,
+                message: "Missing date range"
+            });
+        }
+
+        const startDate = new Date(from);
+        const endDate = new Date(to);
+
+        const snap = await db.collection("reports").get();
+
+        let totalVisitors = 0;
+        let totalCost = 0;
+
+        let vaccineUsage = {
+            yellow: 0,
+            cholera: 0,
+            solk: 0,
+            pasteur: 0,
+            pfizer: 0,
+            dual: 0,
+            flu: 0,
+            hep: 0
+        };
+
+        let officePerformance = {};
+
+        snap.forEach(doc => {
+            const data = doc.data();
+
+            if (!data.dateFrom || !data.dateTo) return;
+
+            const reportStart = new Date(data.dateFrom);
+            const reportEnd = new Date(data.dateTo);
+
+            // فلترة حسب التاريخ
+            if (reportEnd < startDate || reportStart > endDate) return;
+
+            // ======================
+            // إجمالي المترددين
+            // ======================
+            const visitors =
+                (data.yellowEgyptians || 0) +
+                (data.yellowForeigners || 0) +
+                (data.choleraDose1 || 0) +
+                (data.choleraDose2 || 0) +
+                (data.solkUsed || 0) +
+                (data.pasteurHajj || 0) +
+                (data.pasteurForeignHajj || 0) +
+                (data.pasteurOmrah || 0) +
+                (data.pasteurTravelers || 0) +
+                (data.pfizerHajj || 0) +
+                (data.pfizerForeignHajj || 0) +
+                (data.pfizerOmrah || 0) +
+                (data.pfizerTravelers || 0) +
+                (data.dualUsed || 0) +
+                (data.fluHajj || 0) +
+                (data.fluTravelers || 0) +
+                (data.fluCitizens || 0) +
+                (data.hepEgyptians || 0) +
+                (data.hepForeigners || 0);
+
+            totalVisitors += visitors;
+
+            // ======================
+            // الإيرادات (لو موجودة في الداتا)
+            // ======================
+            totalCost += data.totalCost || 0;
+
+            // ======================
+            // Vaccine usage
+            // ======================
+            vaccineUsage.yellow += (data.yellowEgyptians || 0) + (data.yellowForeigners || 0);
+            vaccineUsage.cholera += (data.choleraDose1 || 0) + (data.choleraDose2 || 0);
+            vaccineUsage.solk += (data.solkUsed || 0);
+            vaccineUsage.pasteur += (data.pasteurHajj || 0) + (data.pasteurForeignHajj || 0) + (data.pasteurOmrah || 0) + (data.pasteurTravelers || 0);
+            vaccineUsage.pfizer += (data.pfizerHajj || 0) + (data.pfizerForeignHajj || 0) + (data.pfizerOmrah || 0) + (data.pfizerTravelers || 0);
+            vaccineUsage.dual += (data.dualUsed || 0);
+            vaccineUsage.flu += (data.fluHajj || 0) + (data.fluTravelers || 0) + (data.fluCitizens || 0);
+            vaccineUsage.hep += (data.hepEgyptians || 0) + (data.hepForeigners || 0);
+
+            // ======================
+            // Office performance
+            // ======================
+            const office = data.officeName || "Unknown";
+
+            if (!officePerformance[office]) {
+                officePerformance[office] = {
+                    visitors: 0,
+                    cost: 0
+                };
+            }
+
+            officePerformance[office].visitors += visitors;
+            officePerformance[office].cost += data.totalCost || 0;
+        });
+
+        res.json({
+            success: true,
+            stats: {
+                totalVisitors,
+                totalCost,
+                vaccineUsage,
+                officePerformance
+            }
+        });
+
+    } catch (err) {
+        console.error(err);
+
+        res.status(500).json({
+            success: false,
+            error: err.message
+        });
+    }
+});
+
 app.get("/get-report", async (req, res) => {
     try {
         const { officeCode, dateFrom, dateTo } = req.query;
